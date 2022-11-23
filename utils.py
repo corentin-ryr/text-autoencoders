@@ -299,3 +299,13 @@ def parse_args():
 
     # return args
     return args
+
+# Various ===========================================================================================
+def get_device(useGPU):
+    if torch.cuda.is_available() and useGPU:
+        return torch.device("cuda:0")
+    
+    if torch.backends.mps.is_available() and useGPU:
+        return torch.device("mps")
+
+    return torch.device("cpu")

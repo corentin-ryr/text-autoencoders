@@ -5,7 +5,7 @@ from trainers import AutoencoderTrainer, VariationalAutoEncoderTrainer, Adversar
 from models import AutoEncoderMixerToSeq, VariationalAutoEncoderMixerToSeq
 from utils import ToyVocab
 from utils import parse_args
-from utils import pcaOn2Dim, tsneOn2Dim, simpleVizualization
+from utils import pcaOn2Dim, tsneOn2Dim, simpleVizualization, get_device
 
 from torch.utils.data import DataLoader
 
@@ -149,11 +149,11 @@ if __name__ == "__main__":
         args.use_noise = False
 
     # run main function
-    if args.traning == "ae": classicAutoencoder(args)
+    if args.training == "ae": classicAutoencoder(args)
 
-    elif args.traning == "vae": variationalAutoencoder(args)
+    elif args.training == "vae": variationalAutoencoder(args)
 
-    elif args.traning == "aae": adversarialAutoencoder(args)
+    elif args.training == "aae": adversarialAutoencoder(args)
 
     else: print("Please select from the three training procedures: ae, vae and aae")
     
