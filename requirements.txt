@@ -1,0 +1,6 @@
+tqdm
+matplotlib
+scikit-learn
+torch
+numpy
+git+https://github.com/corentin-ryr/nlp-toolkit@azureml
