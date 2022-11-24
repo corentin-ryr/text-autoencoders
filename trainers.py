@@ -1,6 +1,3 @@
-import os
-import random
-import time
 from datetime import datetime
 
 import torch
@@ -9,7 +6,6 @@ from utils import noisy
 from utils import compute_term_frequency
 from utils import GradualWarmupScheduler
 from utils import Tokenizer
-from utils import simpleVizualization
 
 from mixers.trainers.abstractTrainers import Trainer
 from mixers.utils.helper import InteractivePlot
@@ -17,7 +13,6 @@ from torch import nn, optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import Dataset
 from tqdm import tqdm
-
 
 
 class AutoencoderTrainer(Trainer):
@@ -144,7 +139,11 @@ class AutoencoderTrainer(Trainer):
             predicted_sentences = self.decode(z)
 
             symbolsBatch = torch.count_nonzero(target).item() if self.ignore_padding else target.numel()
-            nbNonZeros = torch.count_nonzero(torch.masked_select(torch.abs(predicted_sentences - target), target != 0)).item() if self.ignore_padding else torch.count_nonzero(predicted_sentences - target).item()
+            nbNonZeros = (
+                torch.count_nonzero(torch.masked_select(torch.abs(predicted_sentences - target), target != 0)).item()
+                if self.ignore_padding
+                else torch.count_nonzero(predicted_sentences - target).item()
+            )
             all_symbols_target += symbolsBatch
             correct_symbols += symbolsBatch - nbNonZeros
 
@@ -153,8 +152,7 @@ class AutoencoderTrainer(Trainer):
                     correct_sentences += 1
                 else:
                     incorrect_sentences += 1
-            
-        
+
         print("Number of symbols :", all_symbols_target)
         print()
 
@@ -166,7 +164,6 @@ class AutoencoderTrainer(Trainer):
         print("Incorrectly predicted sentences: ", incorrect_sentences)
 
         # simpleVizualization(self, self.trainloader, showFig=False, savePath="outputs", device=self.device)
-
 
     def encode(self, input):
         self.model.eval()
@@ -260,9 +257,7 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
         self.D = nn.Sequential(nn.Linear(self.z_dim, 64), nn.ReLU(), nn.Linear(64, 1), nn.Sigmoid()).to(device)
 
         self.optD = optim.Adam(self.D.parameters(), lr=self.lr)
-        self.schedulerD = GradualWarmupScheduler(
-            self.optD, multiplier=1, total_epoch=4, after_scheduler=ExponentialLR(self.optimizer, gamma=0.99)
-        )
+        self.schedulerD = GradualWarmupScheduler(self.optD, multiplier=1, total_epoch=4, after_scheduler=ExponentialLR(self.optimizer, gamma=0.99))
         self.schedulerD.step()
 
     def train(self):
@@ -420,9 +415,9 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
 
                 predictions, mu, logvar = self.model(source, target)
 
-                lambdaKL = 0.03 
+                lambdaKL = 0.03
                 loss_rec = criterion(torch.flatten(predictions, end_dim=1), torch.flatten(target))
-                loss_kl = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim = 1), dim = 0)
+                loss_kl = torch.mean(-0.5 * torch.sum(1 + logvar - mu**2 - logvar.exp(), dim=1), dim=0)
                 (loss_rec + lambdaKL * loss_kl).backward()
                 self.optimizer.step()
 

@@ -21,8 +21,9 @@ trainDataset = BinaryToyDataset(samplePerClass=100, sampleLength=sentenceLength)
 def classicAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
 
-    model = AutoEncoderMixerToSeq(vocab, sentenceLength=sentenceLength, embeddingSize=16, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1)
-    # model = AutoEncoderLSTM(vocab, sentenceLength=sentenceLength)
+    model = AutoEncoderMixerToSeq(
+        vocab, sentenceLength=sentenceLength, embeddingSize=16, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
+    )
 
     trainer = AutoencoderTrainer(
         model=model,
@@ -58,7 +59,9 @@ def classicAutoencoder(args):
 def variationalAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
 
-    model = VariationalAutoEncoderMixerToSeq(vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1)
+    model = VariationalAutoEncoderMixerToSeq(
+        vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
+    )
 
     trainer = VariationalAutoEncoderTrainer(
         model=model,
@@ -94,7 +97,9 @@ def variationalAutoencoder(args):
 def adversarialAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
 
-    model = AutoEncoderMixerToSeq(vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1)
+    model = AutoEncoderMixerToSeq(
+        vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
+    )
 
     trainer = AdversarialAutoEncoderTrainer(
         model=model,
@@ -149,12 +154,14 @@ if __name__ == "__main__":
         args.use_noise = False
 
     # run main function
-    if args.training == "ae": classicAutoencoder(args)
+    if args.training == "ae":
+        classicAutoencoder(args)
 
-    elif args.training == "vae": variationalAutoencoder(args)
+    elif args.training == "vae":
+        variationalAutoencoder(args)
 
-    elif args.training == "aae": adversarialAutoencoder(args)
+    elif args.training == "aae":
+        adversarialAutoencoder(args)
 
-    else: print("Please select from the three training procedures: ae, vae and aae")
-    
-
+    else:
+        print("Please select from the three training procedures: ae, vae and aae")

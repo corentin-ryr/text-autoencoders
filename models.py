@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from mixers.models.MLPMixer.mlpmixer import MixerBlock
 
+
 class AutoEncoderMixerToSeq(nn.Module):
     def __init__(self, vocab, sentenceLength=100, embeddingSize=50, mixerHiddenSize=256, decoderHiddenSize=512, num_layers=3, latentSize=32) -> None:
         super().__init__()
@@ -54,8 +55,6 @@ class AutoEncoderMixerToSeq(nn.Module):
         logits = self.proj(predictions.squeeze(dim=1))
         return logits
 
-
-
     def forward(self, source, target):
         """Feed x into the autoencoder
 
@@ -78,7 +77,7 @@ class VariationalAutoEncoderMixerToSeq(AutoEncoderMixerToSeq):
             mixerHiddenSize=mixerHiddenSize,
             decoderHiddenSize=decoderHiddenSize,
             num_layers=num_layers,
-            latentSize=latentSize
+            latentSize=latentSize,
         )
 
         self.z2mu = nn.Linear(latentSize, latentSize)
