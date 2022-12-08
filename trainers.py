@@ -109,10 +109,10 @@ class AutoencoderTrainer(Trainer):
                 self.interactivePlot.update_plot(total_loss / len(self.trainloader.dataset))
             total_loss = 0
 
-            if epoch % 10 == 9:
-                self.scheduler.step()
+            if epoch % 100 == 99:
+                self.save_model(checkpoint=True)
                 self.validate(validateOnTrain=True)
-                # self.validate()
+                self.scheduler.step()
                 print(f"Current learning rate: {self.scheduler.get_last_lr()[0]}")
 
 
@@ -283,7 +283,7 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
                 loss_d = F.binary_cross_entropy(self.D(z.detach()), zeros) + F.binary_cross_entropy(self.D(zn), ones)
                 loss_adv = F.binary_cross_entropy(self.D(z), ones)
                 loss_rec = criterion(torch.flatten(predictions, end_dim=1), torch.flatten(target))
-                loss: torch.Tensor = loss_rec + 1 * loss_adv
+                loss: torch.Tensor = loss_rec + 0.1 * loss_adv
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -301,10 +301,11 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
             if self.display_loss:
                 self.interactivePlot.update_plot(total_loss_ae / len(self.trainloader.dataset), total_loss_d / len(self.trainloader.dataset))
 
-            if epoch % 10 == 9:
+            if epoch % 100 == 99:
+                self.save_model(checkpoint=True)
+                self.validate(validateOnTrain=True)
                 self.scheduler.step()
                 self.schedulerD.step()
-                self.validate(validateOnTrain=True)
                 print(f"Current learning rate: {self.scheduler.get_last_lr()[0]}")
         
     def encode(self, input):
@@ -366,7 +367,7 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
             displayLoss=displayLoss,
         )
 
-        self.sigmoidAnnealing = frange_cycle_sigmoid(0, 1, self.epochs, n_cycle=1, ratio=0.7) * 0.5
+        self.sigmoidAnnealing = frange_cycle_sigmoid(0, 1, self.epochs, n_cycle=1, ratio=0.7) * 0.1
 
         import matplotlib.pyplot as plt
 

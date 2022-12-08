@@ -45,14 +45,14 @@ def classicAutoencoder(args):
     print(args)
     trainer.summarize_model()
 
-    trainer.train()
+    # trainer.train()
 
-    trainer.save_model(savePath=savePath)
+    # trainer.save_model(savePath=savePath)
 
     trainer.validate()
 
-    tsneOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
-    pcaOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
+    # tsneOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
+    # pcaOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
     simpleVizualization(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
 
 
@@ -126,8 +126,8 @@ def adversarialAutoencoder(args):
 
     trainer.validate()
 
-    tsneOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
-    pcaOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
+    # tsneOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
+    # pcaOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
     simpleVizualization(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
 
 
@@ -140,13 +140,13 @@ if __name__ == "__main__":
     args = parse_args()
 
     if not args.training:
-        args.training = "vae"
+        args.training = "ae"
     if not args.model_param:
-        args.model_param = "checkpoints/VariationalAutoEncoderMixerToSeq-cp-2022-12-08-17-08"
+        args.model_param = "checkpoints/AutoEncoderMixerToSeq-cp-2022-12-08-23-17"
     if not args.num_epoch:
-        args.num_epoch = 10000
+        args.num_epoch = 4000
     if not args.lr:
-        args.lr = 0.001
+        args.lr = 0.003
     if args.use_gpu is None:
         args.use_gpu = False
     if args.use_noise is None:
