@@ -77,21 +77,20 @@ def variationalAutoencoder(args):
         vocab=vocab,
     )
 
-    if args.model_param:
-        trainer.load_model(args.model_param)
+    if args.model_param: trainer.load_model(args.model_param)
 
     print(args)
     trainer.summarize_model()
 
-    trainer.train()
+    # trainer.train()
 
-    trainer.save_model(savePath=savePath)
+    # trainer.save_model(savePath=savePath)
 
     trainer.validate()
 
-    tsneOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
-    pcaOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
-    simpleVizualization(trainer, DataLoader(trainDataset, batch_size), showFig=False, savePath=savePath, device=device)
+    # tsneOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=True, savePath=savePath, device=device)
+    # pcaOn2Dim(trainer, DataLoader(trainDataset, batch_size), showFig=True, savePath=savePath, device=device)
+    simpleVizualization(trainer, DataLoader(trainDataset, batch_size), showFig=True, savePath=savePath, device=device)
 
 
 def adversarialAutoencoder(args):
@@ -141,13 +140,13 @@ if __name__ == "__main__":
     args = parse_args()
 
     if not args.training:
-        args.training = "ae"
+        args.training = "vae"
     if not args.model_param:
-        args.model_param = ""
+        args.model_param = "checkpoints/VariationalAutoEncoderMixerToSeq-cp-2022-12-08-17-08"
     if not args.num_epoch:
-        args.num_epoch = 600
+        args.num_epoch = 10000
     if not args.lr:
-        args.lr = 0.005
+        args.lr = 0.001
     if args.use_gpu is None:
         args.use_gpu = False
     if args.use_noise is None:

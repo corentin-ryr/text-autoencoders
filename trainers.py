@@ -2,10 +2,7 @@ from datetime import datetime
 
 import torch
 import torch.nn.functional as F
-from utils import noisy
-from utils import compute_term_frequency
-from utils import GradualWarmupScheduler
-from utils import Tokenizer
+from utils import noisy, compute_term_frequency, GradualWarmupScheduler, Tokenizer, frange_cycle_sigmoid
 
 from mixers.trainers.abstractTrainers import Trainer
 from mixers.utils.helper import InteractivePlot
@@ -61,7 +58,7 @@ class AutoencoderTrainer(Trainer):
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = GradualWarmupScheduler(
-            self.optimizer, multiplier=1, total_epoch=4, after_scheduler=ExponentialLR(self.optimizer, gamma=0.99)
+            self.optimizer, multiplier=1, total_epoch=4, after_scheduler=ExponentialLR(self.optimizer, gamma=0.95)
         )
         self.scheduler.step()
 
@@ -71,10 +68,7 @@ class AutoencoderTrainer(Trainer):
         if self.display_loss:
             self.interactivePlot = InteractivePlot(1)
 
-        if self.vocab:
-            weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device)
-        else:
-            weights = None
+        weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
         criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss(weight=weights)
 
         for epoch in range(self.epochs):
@@ -121,8 +115,6 @@ class AutoencoderTrainer(Trainer):
                 # self.validate()
                 print(f"Current learning rate: {self.scheduler.get_last_lr()[0]}")
 
-        if self.display_loss:
-            self.interactivePlot.save_plot("outputs")
 
     def validate(self, validateOnTrain: bool = False):
 
@@ -158,12 +150,9 @@ class AutoencoderTrainer(Trainer):
 
         print(f"Correctly predicted words    : {correct_symbols} ({(correct_symbols / all_symbols_target):.2f} of all symbols)")
         print("Incorrectly predicted words  : ", all_symbols_target - correct_symbols)
-        print(
-            f"Correctly predicted sentences  : {correct_sentences} ({(correct_sentences / (correct_sentences + incorrect_sentences)):.2f} of all sentences)"
-        )
+        print(f"Correctly predicted sentences  : {correct_sentences} ({(correct_sentences / (correct_sentences + incorrect_sentences)):.2f} of all sentences)")
         print("Incorrectly predicted sentences: ", incorrect_sentences)
 
-        # simpleVizualization(self, self.trainloader, showFig=False, savePath="outputs", device=self.device)
 
     def encode(self, input):
         self.model.eval()
@@ -181,7 +170,7 @@ class AutoencoderTrainer(Trainer):
         _, predicted_tensor = predictions.topk(1)
         return predicted_tensor.squeeze()
 
-    def save_model(self, object_to_save=None, savePath="saves", checkpoint: bool = False):
+    def save_model(self, object_to_save=None, savePath="checkpoints", checkpoint: bool = False):
         if not object_to_save:
             if checkpoint:
                 object_to_save = {"model_state_dict": self.model.state_dict(), "optimizer_state_dict": self.optimizer.state_dict()}
@@ -189,6 +178,10 @@ class AutoencoderTrainer(Trainer):
                 object_to_save = self.model.state_dict()
 
         super().save_model(object_to_save, savePath, checkpoint=checkpoint)
+
+        if self.display_loss:
+            self.interactivePlot.save_plot("outputs")
+
 
     def load_model(self, load_path):
         # Check if it is a checkpoint and if so setup the optimizer
@@ -198,7 +191,6 @@ class AutoencoderTrainer(Trainer):
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         else:
             self.model.load_state_dict(checkpoint)
-
 
 class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
     def __init__(
@@ -264,10 +256,7 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
         if self.display_loss:
             self.interactivePlot = InteractivePlot(2, ["Reconstruction loss", "Discriminator loss"])
 
-        if self.vocab:
-            weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device)
-        else:
-            weights = None
+        weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
         criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss()
 
         for epoch in range(self.epochs):
@@ -317,21 +306,12 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
                 self.schedulerD.step()
                 self.validate(validateOnTrain=True)
                 print(f"Current learning rate: {self.scheduler.get_last_lr()[0]}")
-        if self.display_loss:
-            self.interactivePlot.save_plot("outputs")
-
+        
     def encode(self, input):
         self.model.eval()
 
         z = self.model.encode(input)
         return z.squeeze(0).detach()
-
-    def parameterIterator(self):
-        for n, p in self.model.named_parameters():
-            yield n, p
-        for n, p in self.D.named_parameters():
-            yield n, p
-
 
 class VariationalAutoEncoderTrainer(AutoencoderTrainer):
     def __init__(
@@ -386,14 +366,19 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
             displayLoss=displayLoss,
         )
 
+        self.sigmoidAnnealing = frange_cycle_sigmoid(0, 1, self.epochs, n_cycle=1, ratio=0.7) * 0.5
+
+        import matplotlib.pyplot as plt
+
+        plt.plot(self.sigmoidAnnealing)
+        plt.grid(visible=True)
+        plt.show()
+
     def train(self):
         if self.display_loss:
             self.interactivePlot = InteractivePlot(2, ["Reconstruction loss", "KL Divergence"])
 
-        if self.vocab:
-            weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device)
-        else:
-            weights = None
+        weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
         criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss(weight=weights)
 
         for epoch in range(self.epochs):
@@ -415,7 +400,8 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
 
                 predictions, mu, logvar = self.model(source, target)
 
-                lambdaKL = 0.03
+                lambdaKL = self.sigmoidAnnealing[epoch]
+
                 loss_rec = criterion(torch.flatten(predictions, end_dim=1), torch.flatten(target))
                 loss_kl = torch.mean(-0.5 * torch.sum(1 + logvar - mu**2 - logvar.exp(), dim=1), dim=0)
                 (loss_rec + lambdaKL * loss_kl).backward()
@@ -429,12 +415,12 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
             if self.display_loss:
                 self.interactivePlot.update_plot(total_loss_rec / len(self.trainloader.dataset), total_loss_kl / len(self.trainloader.dataset))
 
-            if epoch % 10 == 9:
+            if epoch % 100 == 99:
+                self.save_model(checkpoint=True)
                 self.validate(validateOnTrain=True)
                 self.scheduler.step()
                 print(f"Current learning rate: {self.scheduler.get_last_lr()[0]}")
-        if self.display_loss:
-            self.interactivePlot.save_plot("outputs")
+
 
     def encode(self, input):
         self.model.eval()
