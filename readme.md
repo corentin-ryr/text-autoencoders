@@ -24,7 +24,7 @@ The output of the decoder is then passed through a linear layer to get the logit
 
 The three training procedures can be combined with denoising by applying noise on the input and computing the reconstruction loss with the unaltered sequence.
 
-### CLassic Autoencoder
+### Classic Autoencoder
 
 For this procedure, we only optimize for the reconstruction loss.
 

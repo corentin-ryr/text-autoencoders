@@ -1,15 +1,15 @@
 from datetime import datetime
-
-import torch
-import torch.nn.functional as F
-from utils import noisy, compute_term_frequency, GradualWarmupScheduler, Tokenizer, frange_cycle_sigmoid
+from utils import noisy, compute_term_frequency, GradualWarmupScheduler, Tokenizer, frange_cycle_sigmoid, priorSampling
 
 from mixers.trainers.abstractTrainers import Trainer
 from mixers.utils.helper import InteractivePlot
+
+import torch
+import torch.nn.functional as F
 from torch import nn, optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import Dataset
-from tqdm import tqdm
+from tqdm.rich import tqdm
 
 
 class AutoencoderTrainer(Trainer):
@@ -65,8 +65,7 @@ class AutoencoderTrainer(Trainer):
     def train(self):
         super().train()
 
-        if self.display_loss:
-            self.interactivePlot = InteractivePlot(1)
+        self.interactivePlot = InteractivePlot(1)
 
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
         criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss(weight=weights)
@@ -77,21 +76,7 @@ class AutoencoderTrainer(Trainer):
 
             for idx, data in enumerate(tqdm(self.trainloader, desc="Epoch {}".format(epoch))):
                 source, _ = data
-                target = torch.clone(source)
-
-                if self.denoising and self.vocab:
-                    drop_prob = 0
-                    source = noisy(self.vocab, source, drop_prob, 0, 0.2, 0)
-
-                    if drop_prob > 0:
-                        lengths = torch.argwhere(source == self.vocab.eos)[:, 1] + 1
-                        sortingIndices = torch.argsort(lengths, descending=True)
-                        lengths = lengths[sortingIndices]
-                        source = source[sortingIndices]
-                        target = target[sortingIndices]
-
-                source = source.to(self.device).detach()
-                target = target.to(self.device).detach()
+                source, target = self.add_noise(source)
 
                 self.optimizer.zero_grad()
 
@@ -105,9 +90,7 @@ class AutoencoderTrainer(Trainer):
                 total_loss += loss.item() * len(source)
 
             print(datetime.now().strftime("%H:%M:%S"), "Epoch", epoch, "loss:", total_loss / len(self.trainloader.dataset))
-            if self.display_loss:
-                self.interactivePlot.update_plot(total_loss / len(self.trainloader.dataset))
-            total_loss = 0
+            self.interactivePlot.update_plot(total_loss / len(self.trainloader.dataset))
 
             if epoch % 100 == 99:
                 self.save_model(checkpoint=True)
@@ -145,27 +128,19 @@ class AutoencoderTrainer(Trainer):
                 else:
                     incorrect_sentences += 1
 
-        print("Number of symbols :", all_symbols_target)
-        print()
+        print("Number of symbols: ", all_symbols_target, " | Number of sentences: ", correct_sentences + incorrect_sentences, "\n")
 
-        print(f"Correctly predicted words    : {correct_symbols} ({(correct_symbols / all_symbols_target):.2f} of all symbols)")
-        print("Incorrectly predicted words  : ", all_symbols_target - correct_symbols)
-        print(f"Correctly predicted sentences  : {correct_sentences} ({(correct_sentences / (correct_sentences + incorrect_sentences)):.2f} of all sentences)")
-        print("Incorrectly predicted sentences: ", incorrect_sentences)
+        print(f"Correctly predicted words    : {correct_symbols} ({(correct_symbols / all_symbols_target)*100:.2f}% of all symbols)")
+        print(f"Correctly predicted sentences  : {correct_sentences} ({(correct_sentences / (correct_sentences + incorrect_sentences))*100:.2f}% of all sentences)")
 
 
     def encode(self, input):
         self.model.eval()
-
         z = self.model.encode(input)
-
-        if len(z.shape) > 2 and z.shape[0] > 1:
-            z = torch.cat([z[i] for i in range(z.shape[0])], dim=1).unsqueeze(0)
         return z.squeeze(0).detach()
 
     def decode(self, z):
         self.model.eval()
-
         predictions = self.model.decode(z)
         _, predicted_tensor = predictions.topk(1)
         return predicted_tensor.squeeze()
@@ -191,6 +166,14 @@ class AutoencoderTrainer(Trainer):
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         else:
             self.model.load_state_dict(checkpoint)
+    
+    def add_noise(self, source):
+        target = torch.clone(source).to(self.device)
+        if self.denoising and self.vocab:
+            source = noisy(self.vocab, source, 0, 0, 0.2, 0)
+
+        return source.to(self.device).detach(), target
+
 
 class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
     def __init__(
@@ -210,24 +193,7 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
         denoising: bool = False,
         displayLoss: bool = False,
     ) -> None:
-        """Class to train a autoencoder model. It works for recurrent and non recurrent models. It can apply the variational and adversarial training procedures.
 
-        Args:
-            model (nn.Module): The torch model of the autoencoder (must have a forward method that returns the predictions, mu and ligvar) and an encode method that returns mu and logvar (the mean and the log variance of the latent space)
-            device (_type_): The device on which to train
-            vocab (_type_): The vocabulary class
-            rnn (bool): Wether the model is recurrent or not (the input)
-            traindataset (Dataset, optional): Training dataset. The data is a tensor of indices in the vocabulary. Defaults to None.
-            testdataset (Dataset, optional): Testing dataset.The data is a tensor of indices in the vocabulary. Defaults to None.
-            evaldataset (Dataset, optional): Evaluation dataset. The data is a tensor of indices in the vocabulary. Defaults to None.
-            batch_size (int, optional): The batch size. Defaults to 256.
-            epochs (int, optional): The number of epochs. Defaults to 150.
-            collate_fn (_type_, optional): The collate function for the dataloader. The output must fit the input of the network. Defaults to None.
-            lr (float, optional): The initial learning rate. Defaults to 0.001.
-            shuffle (bool, optional): Wether to shuffle the dataset at each epoch. Defaults to True.
-            procedure (str, optional): Can be standard, variational or adversarial. Defaults to "standard".
-            denoising (bool, optional): Wether to apply noise to the input. Defaults to False.
-        """
         super().__init__(
             model=model,
             device=device,
@@ -249,12 +215,11 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
         self.D = nn.Sequential(nn.Linear(self.z_dim, 64), nn.ReLU(), nn.Linear(64, 1), nn.Sigmoid()).to(device)
 
         self.optD = optim.Adam(self.D.parameters(), lr=self.lr)
-        self.schedulerD = GradualWarmupScheduler(self.optD, multiplier=1, total_epoch=4, after_scheduler=ExponentialLR(self.optimizer, gamma=0.99))
+        self.schedulerD = GradualWarmupScheduler(self.optD, multiplier=1, total_epoch=4, after_scheduler=ExponentialLR(self.optimizer, gamma=0.95))
         self.schedulerD.step()
 
     def train(self):
-        if self.display_loss:
-            self.interactivePlot = InteractivePlot(2, ["Reconstruction loss", "Discriminator loss"])
+        self.interactivePlot = InteractivePlot(2, ["Reconstruction loss", "Discriminator loss"])
 
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
         criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss()
@@ -266,17 +231,12 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
 
             for idx, data in enumerate(tqdm(self.trainloader, desc="Epoch {}".format(epoch))):
                 source, _ = data
-                target = torch.clone(source).detach()
-
-                if self.denoising:
-                    source = noisy(self.vocab, source, 0, 0, 0.2, 0)
-                source = source.to(self.device).detach()
-                target = target.to(self.device).detach()
+                source, target = self.add_noise(source)
 
                 z = self.model.encode(source)
                 predictions = self.model.decode(z, target)
 
-                zn = torch.randn_like(z)
+                zn = priorSampling(z.shape, prior="molUniform")
                 zeros = torch.zeros(len(z), 1, device=self.device)
                 ones = torch.ones(len(z), 1, device=self.device)
 
@@ -298,8 +258,7 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
 
             print(datetime.now().strftime("%H:%M:%S"), "Epoch", epoch, "loss reconstruction:", total_loss_ae / len(self.trainloader.dataset))
             print(datetime.now().strftime("%H:%M:%S"), "Epoch", epoch, "loss discriminator:", total_loss_d / len(self.trainloader.dataset))
-            if self.display_loss:
-                self.interactivePlot.update_plot(total_loss_ae / len(self.trainloader.dataset), total_loss_d / len(self.trainloader.dataset))
+            self.interactivePlot.update_plot(total_loss_ae / len(self.trainloader.dataset), total_loss_d / len(self.trainloader.dataset))
 
             if epoch % 100 == 99:
                 self.save_model(checkpoint=True)
@@ -307,77 +266,13 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
                 self.scheduler.step()
                 self.schedulerD.step()
                 print(f"Current learning rate: {self.scheduler.get_last_lr()[0]}")
-        
-    def encode(self, input):
-        self.model.eval()
 
-        z = self.model.encode(input)
-        return z.squeeze(0).detach()
 
 class VariationalAutoEncoderTrainer(AutoencoderTrainer):
-    def __init__(
-        self,
-        model: nn.Module,
-        device,
-        ignore_padding: bool,
-        vocab=None,
-        traindataset: Dataset = None,
-        testdataset: Dataset = None,
-        evaldataset: Dataset = None,
-        batch_size: int = 256,
-        epochs=150,
-        collate_fn=None,
-        lr=0.001,
-        shuffle: bool = True,
-        denoising: bool = False,
-        displayLoss: bool = False,
-    ) -> None:
-        """Class to train a autoencoder model. It works for recurrent and non recurrent models. It can apply the variational and adversarial training procedures.
-
-        Args:
-            model (nn.Module): The torch model of the autoencoder (must have a forward method that returns the predictions, mu and ligvar) and an encode method that returns mu and logvar (the mean and the log variance of the latent space)
-            device (_type_): The device on which to train
-            vocab (_type_): The vocabulary class
-            rnn (bool): Wether the model is recurrent or not (the input)
-            traindataset (Dataset, optional): Training dataset. The data is a tensor of indices in the vocabulary. Defaults to None.
-            testdataset (Dataset, optional): Testing dataset.The data is a tensor of indices in the vocabulary. Defaults to None.
-            evaldataset (Dataset, optional): Evaluation dataset. The data is a tensor of indices in the vocabulary. Defaults to None.
-            batch_size (int, optional): The batch size. Defaults to 256.
-            epochs (int, optional): The number of epochs. Defaults to 150.
-            collate_fn (_type_, optional): The collate function for the dataloader. The output must fit the input of the network. Defaults to None.
-            lr (float, optional): The initial learning rate. Defaults to 0.001.
-            shuffle (bool, optional): Wether to shuffle the dataset at each epoch. Defaults to True.
-            procedure (str, optional): Can be standard, variational or adversarial. Defaults to "standard".
-            denoising (bool, optional): Wether to apply noise to the input. Defaults to False.
-        """
-        super().__init__(
-            model=model,
-            device=device,
-            vocab=vocab,
-            ignore_padding=ignore_padding,
-            traindataset=traindataset,
-            testdataset=testdataset,
-            evaldataset=evaldataset,
-            batch_size=batch_size,
-            epochs=epochs,
-            collate_fn=collate_fn,
-            lr=lr,
-            shuffle=shuffle,
-            denoising=denoising,
-            displayLoss=displayLoss,
-        )
-
-        self.sigmoidAnnealing = frange_cycle_sigmoid(0, 1, self.epochs, n_cycle=1, ratio=0.7) * 0.1
-
-        import matplotlib.pyplot as plt
-
-        plt.plot(self.sigmoidAnnealing)
-        plt.grid(visible=True)
-        plt.show()
 
     def train(self):
-        if self.display_loss:
-            self.interactivePlot = InteractivePlot(2, ["Reconstruction loss", "KL Divergence"])
+        self.sigmoidAnnealing = frange_cycle_sigmoid(0, 1, self.epochs, n_cycle=1, ratio=0.7) * 0.1
+        self.interactivePlot = InteractivePlot(2, ["Reconstruction loss", "KL Divergence"])
 
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
         criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss(weight=weights)
@@ -389,20 +284,13 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
 
             for idx, data in enumerate(tqdm(self.trainloader, desc="Epoch {}".format(epoch))):
                 source, _ = data
-                target = torch.clone(source).detach()
-
-                if self.denoising and self.vocab:
-                    source = noisy(self.vocab, source, 0, 0, 0.2, 0)
-
-                source = source.to(self.device)
-                target = target.to(self.device)
+                source, target = self.add_noise(source)
 
                 self.optimizer.zero_grad()
 
                 predictions, mu, logvar = self.model(source, target)
 
                 lambdaKL = self.sigmoidAnnealing[epoch]
-
                 loss_rec = criterion(torch.flatten(predictions, end_dim=1), torch.flatten(target))
                 loss_kl = torch.mean(-0.5 * torch.sum(1 + logvar - mu**2 - logvar.exp(), dim=1), dim=0)
                 (loss_rec + lambdaKL * loss_kl).backward()
@@ -413,8 +301,7 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
 
             print(datetime.now().strftime("%H:%M:%S"), "Epoch", epoch, "loss reconstruction:", total_loss_rec / len(self.trainloader.dataset))
             print(datetime.now().strftime("%H:%M:%S"), "Epoch", epoch, "loss kl:", total_loss_kl / len(self.trainloader.dataset))
-            if self.display_loss:
-                self.interactivePlot.update_plot(total_loss_rec / len(self.trainloader.dataset), total_loss_kl / len(self.trainloader.dataset))
+            self.interactivePlot.update_plot(total_loss_rec / len(self.trainloader.dataset), total_loss_kl / len(self.trainloader.dataset))
 
             if epoch % 100 == 99:
                 self.save_model(checkpoint=True)
@@ -422,9 +309,7 @@ class VariationalAutoEncoderTrainer(AutoencoderTrainer):
                 self.scheduler.step()
                 print(f"Current learning rate: {self.scheduler.get_last_lr()[0]}")
 
-
     def encode(self, input):
         self.model.eval()
-
         _, mu, _ = self.model.encode(input)
         return mu.squeeze(0).detach()

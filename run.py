@@ -45,9 +45,8 @@ def classicAutoencoder(args):
     print(args)
     trainer.summarize_model()
 
-    # trainer.train()
-
-    # trainer.save_model(savePath=savePath)
+    trainer.train()
+    trainer.save_model(savePath=savePath)
 
     trainer.validate()
 
@@ -82,9 +81,8 @@ def variationalAutoencoder(args):
     print(args)
     trainer.summarize_model()
 
-    # trainer.train()
-
-    # trainer.save_model(savePath=savePath)
+    trainer.train()
+    trainer.save_model(savePath=savePath)
 
     trainer.validate()
 
@@ -120,9 +118,8 @@ def adversarialAutoencoder(args):
     print(args)
     trainer.summarize_model()
 
-    trainer.train()
-
-    trainer.save_model(savePath=savePath)
+    # trainer.train()
+    # trainer.save_model(savePath=savePath)
 
     trainer.validate()
 
@@ -133,16 +130,12 @@ def adversarialAutoencoder(args):
 
 # run script
 if __name__ == "__main__":
-    # add space in logs
-    print("\n\n")
-
-    # parse args
     args = parse_args()
 
     if not args.training:
-        args.training = "ae"
+        args.training = "aae"
     if not args.model_param:
-        args.model_param = "checkpoints/AutoEncoderMixerToSeq-cp-2022-12-08-23-17"
+        args.model_param = "checkpoints\AutoEncoderMixerToSeq-cp-2022-12-15-14-15"
     if not args.num_epoch:
         args.num_epoch = 4000
     if not args.lr:
@@ -152,7 +145,6 @@ if __name__ == "__main__":
     if args.use_noise is None:
         args.use_noise = False
 
-    # run main function
     if args.training == "ae":
         classicAutoencoder(args)
 
