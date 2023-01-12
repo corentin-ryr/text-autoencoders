@@ -118,8 +118,8 @@ def adversarialAutoencoder(args):
     print(args)
     trainer.summarize_model()
 
-    # trainer.train()
-    # trainer.save_model(savePath=savePath)
+    trainer.train()
+    trainer.save_model(savePath=savePath)
 
     trainer.validate()
 
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     if not args.training:
         args.training = "aae"
     if not args.model_param:
-        args.model_param = "checkpoints\AutoEncoderMixerToSeq-cp-2022-12-15-14-15"
+        args.model_param = ""
     if not args.num_epoch:
         args.num_epoch = 4000
     if not args.lr:
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     if args.use_gpu is None:
         args.use_gpu = False
     if args.use_noise is None:
-        args.use_noise = False
+        args.use_noise = True
 
     if args.training == "ae":
         classicAutoencoder(args)

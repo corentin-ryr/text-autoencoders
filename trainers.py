@@ -236,7 +236,7 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
                 z = self.model.encode(source)
                 predictions = self.model.decode(z, target)
 
-                zn = priorSampling(z.shape, prior="molUniform")
+                zn = priorSampling(z.shape, prior="uniform")
                 zeros = torch.zeros(len(z), 1, device=self.device)
                 ones = torch.ones(len(z), 1, device=self.device)
 

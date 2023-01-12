@@ -334,3 +334,5 @@ def priorSampling(sampleShape:Tuple[int], prior:str="gaussian"):
     if prior == "molUniform":
         means = torch.rand(sampleShape) - 0.5
         return torch.randn(sampleShape) * 0.1 + means
+    if prior == "uniform":
+        return torch.rand(sampleShape) - 0.5
