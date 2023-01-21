@@ -121,10 +121,6 @@ def adversarialAutoencoder(args):
 
 # run script
 if __name__ == "__main__":
-    # add space in logs
-    print("\n\n")
-
-    # parse args
     args = parse_args()
 
     if not args.training:
@@ -140,7 +136,6 @@ if __name__ == "__main__":
     if args.use_noise is None:
         args.use_noise = True
 
-    # run main function
     if args.training == "ae":
         classicAutoencoder(args)
 

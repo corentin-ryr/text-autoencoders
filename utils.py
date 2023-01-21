@@ -1,3 +1,4 @@
+from typing import Tuple
 import numpy as np
 import torch
 from abc import ABC
@@ -16,7 +17,6 @@ from sklearn.manifold import TSNE
 
 # Tokenizer and vocab ================================================
 
-
 class Tokenizer(ABC):
     def __init__(self) -> None:
         super().__init__()
@@ -31,7 +31,6 @@ class Tokenizer(ABC):
         self.idx2word = []
 
         self.vocab_length = 0
-
 
 class ToyVocab(Tokenizer):
     def __init__(self, numWords=2) -> None:
@@ -49,9 +48,7 @@ class ToyVocab(Tokenizer):
 
         self.vocab_length = self.nspecial + numWords
 
-
 # Noise ========================================================================================
-
 
 def word_shuffle(vocab, x, k):  # slight shuffle such that |sigma[i]-i| <= k
     base = torch.arange(x.size(0), dtype=torch.float).repeat(x.size(1), 1).t()
@@ -90,7 +87,6 @@ def word_substitute(vocab, x, p):  # substitute words with probability p
     x_[keep] = x[keep]
     return x_
 
-
 def noisy(vocab: Tokenizer, x: torch.Tensor, drop_prob: float, blank_prob: float, sub_prob: float, shuffle_dist: int):
     """Takes a tensor of word indices and applies noise with the given parameters.
 
@@ -117,7 +113,6 @@ def noisy(vocab: Tokenizer, x: torch.Tensor, drop_prob: float, blank_prob: float
 
 
 # Scheduler ===================================================================================
-
 
 class GradualWarmupScheduler(_LRScheduler):
     """Gradually warm-up(increasing) learning rate in optimizer.
@@ -182,7 +177,6 @@ class GradualWarmupScheduler(_LRScheduler):
 
 # Term frequency ====================================================================
 
-
 def compute_term_frequency(dataloader, vocabLength):
 
     weights = torch.zeros((vocabLength))
@@ -206,7 +200,7 @@ def compute_term_frequency(dataloader, vocabLength):
 
 def simpleVizualization(trainer, dataloader, device="cpu"):
     allEncodings, allLabels = None, None
-    for samples, labels in tqdm(dataloader, desc="Projection PCA"):
+    for samples, labels in tqdm(dataloader, desc="Computing encodings for simple visualization"):
         encodings = trainer.encode(samples.to(device)).to("cpu")
 
         if allEncodings is not None:
@@ -218,7 +212,7 @@ def simpleVizualization(trainer, dataloader, device="cpu"):
 
     fig, ax = plt.subplots()
     for g in np.unique(allLabels):
-        idx = np.where(allLabels == g)
+        idx = np.array(np.where(allLabels == g))
         ax.scatter(allEncodings[idx, 0], allEncodings[idx, 1], s=2)
 
     trainer.add_image_tensorboard("simple", fig)
@@ -229,7 +223,7 @@ def pcaOn2Dim(trainer, dataloader, device="cpu"):
     pca = PCA(n_components=2)
 
     allEncodings, allLabels = None, None
-    for samples, labels in tqdm(dataloader, desc="Projection PCA"):
+    for samples, labels in tqdm(dataloader, desc="Computing encodings for PCA projection"):
         encodings = trainer.encode(samples.to(device)).to("cpu")
 
         if allEncodings is not None:
@@ -258,7 +252,7 @@ def tsneOn2Dim(trainer, dataloader, device="cpu"):
     tsne = TSNE(n_components=2, learning_rate="auto", init="random", perplexity=3)
 
     allEncodings, allLabels = None, None
-    for samples, labels in tqdm(dataloader, desc="Projection PCA"):
+    for samples, labels in tqdm(dataloader, desc="Computing encodings for t-SNE projection"):
         encodings = trainer.encode(samples.to(device)).to("cpu")
 
         if allEncodings is not None:
@@ -281,7 +275,6 @@ def tsneOn2Dim(trainer, dataloader, device="cpu"):
 
 
 # Arg parser ===============================================================================
-
 
 def parse_args():
     # setup arg parser
@@ -328,3 +321,14 @@ def frange_cycle_sigmoid(start, stop, n_epoch, n_cycle=4, ratio=0.5):
             v += step
             i += 1
     return L 
+
+# Probability sampling ==============================================================================
+
+def priorSampling(sampleShape:Tuple[int], prior:str="gaussian"):
+    if prior == "gaussian":
+        return torch.randn(sampleShape)
+    if prior == "molUniform":
+        means = torch.rand(sampleShape) - 0.5
+        return torch.randn(sampleShape) * 0.1 + means
+    if prior == "uniform":
+        return torch.rand(sampleShape) - 0.5
