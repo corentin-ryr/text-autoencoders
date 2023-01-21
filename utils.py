@@ -34,7 +34,7 @@ class Tokenizer(ABC):
 
 
 class ToyVocab(Tokenizer):
-    def __init__(self) -> None:
+    def __init__(self, numWords=2) -> None:
         super().__init__()
 
         self.pad = 0
@@ -47,7 +47,7 @@ class ToyVocab(Tokenizer):
         self.word2idx = {}
         self.idx2word = []
 
-        self.vocab_length = 6
+        self.vocab_length = self.nspecial + numWords
 
 
 # Noise ========================================================================================
@@ -204,7 +204,7 @@ def compute_term_frequency(dataloader, vocabLength):
 # Visualization =========================================================================
 
 
-def simpleVizualization(trainer, dataloader, showFig, savePath, device="cpu"):
+def simpleVizualization(trainer, dataloader, device="cpu"):
     allEncodings, allLabels = None, None
     for samples, labels in tqdm(dataloader, desc="Projection PCA"):
         encodings = trainer.encode(samples.to(device)).to("cpu")
@@ -221,12 +221,10 @@ def simpleVizualization(trainer, dataloader, showFig, savePath, device="cpu"):
         idx = np.where(allLabels == g)
         ax.scatter(allEncodings[idx, 0], allEncodings[idx, 1], s=2)
 
-    plt.savefig(os.path.join(savePath, "simple.png"))
-    if showFig:
-        plt.show()
+    trainer.add_image_tensorboard("simple", fig)
 
 
-def pcaOn2Dim(trainer, dataloader, showFig, savePath, device="cpu"):
+def pcaOn2Dim(trainer, dataloader, device="cpu"):
     print()
     pca = PCA(n_components=2)
 
@@ -251,12 +249,11 @@ def pcaOn2Dim(trainer, dataloader, showFig, savePath, device="cpu"):
         idx = np.where(allLabels == g)
         ax.scatter(pcaEncodings[idx, 0], pcaEncodings[idx, 1], s=2)
 
-    plt.savefig(os.path.join(savePath, "pca.png"))
-    if showFig:
-        plt.show()
+    trainer.add_image_tensorboard("pca", fig)
 
 
-def tsneOn2Dim(trainer, dataloader, showFig, savePath, device="cpu"):
+
+def tsneOn2Dim(trainer, dataloader, device="cpu"):
     print()
     tsne = TSNE(n_components=2, learning_rate="auto", init="random", perplexity=3)
 
@@ -279,9 +276,8 @@ def tsneOn2Dim(trainer, dataloader, showFig, savePath, device="cpu"):
         idx = np.where(allLabels == g)
         ax.scatter(pcaEncodings[idx, 0], pcaEncodings[idx, 1], s=1)
 
-    plt.savefig(os.path.join(savePath, "tsne.png"))
-    if showFig:
-        plt.show()
+    trainer.add_image_tensorboard("tsne", fig)
+
 
 
 # Arg parser ===============================================================================
