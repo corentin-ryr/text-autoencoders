@@ -12,7 +12,7 @@ class BinaryToyDataset(Dataset):
         self.samples, self.labels = [], []
         for i in range(numClasses):
             classSamples = torch.randint(vocab.vocab_length - vocab.nspecial, (sampleLength,), generator=self.rng).repeat(100, 1)
-            swapMask = torch.rand(classSamples.shape, generator=self.rng) < 0.3
+            swapMask = torch.rand(classSamples.shape, generator=self.rng) < 0.2
 
             classSamples = torch.where(swapMask, torch.randint(vocab.vocab_length - vocab.nspecial, size=classSamples.shape), classSamples)
 
@@ -37,3 +37,61 @@ if __name__ == "__main__":
 
     for data in dataloader:
         print(data)
+
+class BinaryDuplicateToyDataset(Dataset):
+    def __init__(self, sampleLength=50, numberSamples=400, proportionDuplicate=0.15, mode:str = "sampling", nonMatchToMatchRatio=2, vocab=None) -> None:
+        """Generate a toy dataset for contrastive learning.
+
+        Args:
+            sampleLength (int, optional): Length of each samples. Defaults to 50.
+            numberSamples (int, optional): Total number of unique samples (the duplicates come on top of that). Defaults to 400.
+            proportionDuplicate (float, optional): Percentage of duplicate in the final dataset (approximation). Defaults to 0.15.
+            mode (str, optional): Can be 'sampling' (the dataset returns just the sample), 'pairs' (returns pairs that are either duplicate or not). Defaults to "sampling".
+        """
+        super().__init__()
+        self.rng = torch.Generator().manual_seed(0)
+        if not vocab: vocab = ToyVocab()
+        self.mode = mode
+
+        self.samples = []
+        self.exactMatch = []
+        for i in range(numberSamples):
+            sample = torch.randint(vocab.vocab_length - vocab.nspecial, (sampleLength,), generator=self.rng)
+            self.samples.append(sample)
+
+            if torch.rand(1, generator=self.rng) < proportionDuplicate:
+                swapMask = torch.rand(sample.shape, generator=self.rng) < 0.15
+                duplicateSample = torch.where(swapMask, torch.randint(vocab.vocab_length - vocab.nspecial, size=sample.shape), sample)
+                
+                self.samples.append(duplicateSample)
+                self.exactMatch.append( (len(self.samples) - 1, len(self.samples) - 2) )
+        
+        self.samples = torch.stack(self.samples) + vocab.nspecial
+
+        self.nonMatchToMatchRatio = nonMatchToMatchRatio
+
+
+    def __getitem__(self, index):
+        if self.mode == "sampling": return self.samples[index], torch.tensor(0)
+
+        if self.mode == "pairs":
+            if index < len(self.exactMatch):
+                sample1 = self.samples[self.exactMatch[index][0]]
+                sample2 = self.samples[self.exactMatch[index][1]]
+                return sample1, sample2, torch.tensor(1)
+            else:
+                sample1Idx = torch.randint(len(self.samples) - 1, (1,), generator=self.rng).item()
+
+                sample1Matches = [match[1] for match in self.exactMatch if match[0] == sample1Idx]
+                sample1Matches += [match[0] for match in self.exactMatch if match[1] == sample1Idx]
+                sample1Matches += [sample1Idx]
+
+                allowedSamples = set(list(range(len(self.samples)))).difference(sample1Matches)
+
+                sample2Idx = list(allowedSamples)[torch.randint(len(allowedSamples), (1,), generator=self.rng).item()]
+
+                return self.samples[sample1Idx], self.samples[sample2Idx], torch.tensor(0)
+
+    def __len__(self):
+        if self.mode == "sampling": return len(self.samples)
+        if self.mode == "pairs": return int(len(self.exactMatch) * self.nonMatchToMatchRatio)

@@ -1,7 +1,7 @@
 from mixers.utils.helper import get_device
 
 from dataset import BinaryToyDataset
-from trainers import AutoencoderTrainer, VariationalAutoEncoderTrainer, AdversarialAutoEncoderTrainer
+from trainers import AutoencoderTrainer, VariationalAutoEncoderTrainer, AdversarialAutoencoderTrainer
 from models import AutoEncoderMixerToSeq, VariationalAutoEncoderMixerToSeq
 from utils import ToyVocab
 from utils import parse_args
@@ -73,7 +73,8 @@ def variationalAutoencoder(args):
         vocab=vocab,
     )
 
-    if args.model_param: trainer.load_model(args.model_param)
+    if args.model_param:
+        trainer.load_model(args.model_param)
 
     print(args)
     trainer.summarize_model()
@@ -92,7 +93,7 @@ def adversarialAutoencoder(args):
         vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
     )
 
-    trainer = AdversarialAutoEncoderTrainer(
+    trainer = AdversarialAutoencoderTrainer(
         model=model,
         device=device,
         ignore_padding=False,

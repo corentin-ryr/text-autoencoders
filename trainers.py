@@ -60,13 +60,13 @@ class AutoencoderTrainer(Trainer):
         self.display_loss = displayLoss
         self.metrics = {}
 
-
         runName = runName if runName else datetime.today().strftime("%Y-%m-%d-%H-%M")
-        self.runDirectory = os.path.join("outputs", "runs", runName)
+        self.runDirectory = os.path.join("outputs", runName)
         self.writer = SummaryWriter(log_dir=self.runDirectory)
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.epochs)
+
 
     def train(self):
         super().train()
@@ -104,8 +104,7 @@ class AutoencoderTrainer(Trainer):
                 self.save_model(checkpoint=True)
                 self.validate(validateOnTrain=True, epoch=epoch)
 
-
-    def validate(self, validateOnTrain: bool = False, epoch:int=None):
+    def validate(self, validateOnTrain: bool = False, epoch: int = None):
 
         correct_sentences, incorrect_sentences = 0, 0
         correct_symbols, all_symbols_target = 0, 0
@@ -137,13 +136,13 @@ class AutoencoderTrainer(Trainer):
         print(f"Number of symbols: {all_symbols_target} | Number of sentences: {len(self.trainloader.dataset)} \n")
 
         print(f"Correctly predicted words    : {correct_symbols} ({(correct_symbols / all_symbols_target)*100:.2f}% of all symbols)")
-        print(f"Correctly predicted sentences  : {correct_sentences} ({(correct_sentences / len(self.trainloader.dataset))*100:.2f}% of all sentences)")
+        print(
+            f"Correctly predicted sentences  : {correct_sentences} ({(correct_sentences / len(self.trainloader.dataset))*100:.2f}% of all sentences)"
+        )
 
         if epoch:
             self.writer.add_scalar("Correct symbol ", correct_symbols / all_symbols_target, epoch)
             self.writer.add_scalar("Correct sentences ", correct_sentences / (correct_sentences + incorrect_sentences), epoch)
-
-
 
     def encode(self, input):
         self.model.eval()
@@ -163,7 +162,7 @@ class AutoencoderTrainer(Trainer):
             else:
                 object_to_save = self.model.state_dict()
 
-        super().save_model(object_to_save, savePath, checkpoint=checkpoint)
+        super().save_model(object_to_save, os.path.join(self.runDirectory, savePath), checkpoint=checkpoint)
 
     def load_model(self, load_path):
         # Check if it is a checkpoint and if so setup the optimizer
@@ -173,14 +172,13 @@ class AutoencoderTrainer(Trainer):
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         else:
             self.model.load_state_dict(checkpoint)
-    
+
     def add_noise(self, source):
         target = torch.clone(source).to(self.device)
         if self.denoising and self.vocab:
             source = noisy(self.vocab, source, 0, 0, 0.2, 0)
 
         return source.to(self.device).detach(), target
-
 
     def _handle_metrics(self, epoch):
         metricsString = " | ".join([f"{key}:  {self.metrics[key]}" for key in self.metrics])
@@ -192,7 +190,8 @@ class AutoencoderTrainer(Trainer):
         self.writer.add_figure(tag, figure)
         self.writer.flush()
 
-class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
+
+class AdversarialAutoencoderTrainer(AutoencoderTrainer):
     def __init__(
         self,
         model: nn.Module,
@@ -281,13 +280,34 @@ class AdversarialAutoEncoderTrainer(AutoencoderTrainer):
             if epoch % 100 == 99:
                 self.save_model(checkpoint=True)
                 self.validate(validateOnTrain=True, epoch=epoch)
-        
-    def encode(self, input):
-        self.model.eval()
+
+    def load_model(self, load_path):
+        # Check if it is a checkpoint and if so setup the optimizer
+        checkpoint = torch.load(load_path)
+        if "model_state_dict" in checkpoint:
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+            # self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            self.D.load_state_dict(checkpoint["d_state_dict"])
+            self.optD.load_state_dict(checkpoint["optd_state_dict"])
+        else:
+            self.model.load_state_dict(checkpoint)
+
+    def save_model(self, object_to_save=None, savePath="checkpoints", checkpoint: bool = False):
+        if not object_to_save:
+            if checkpoint:
+                object_to_save = {
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "d_state_dict": self.D.state_dict(),
+                    "optd_state_dict": self.optD.state_dict(),
+                }
+            else:
+                object_to_save = self.model.state_dict()
+
+        super().save_model(object_to_save, os.path.join(self.runDirectory, savePath), checkpoint=checkpoint)
 
 
 class VariationalAutoEncoderTrainer(AutoencoderTrainer):
-
     def train(self):
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
         criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss(weight=weights)
