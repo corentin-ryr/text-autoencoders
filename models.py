@@ -23,6 +23,17 @@ class AutoEncoderMixerToSeq(nn.Module):
             mixerBlocks.append(MixerBlock(embeddingSize, sentenceLength, self.mixerHiddenSize, self.mixerHiddenSize))
         self.encoder = nn.Sequential(*mixerBlocks)
 
+        encoderType = "transformer"
+        if encoderType == "mixer":
+            mixerBlocks = []
+            for _ in range(num_layers):
+                mixerBlocks.append(MixerBlock(embeddingSize, sentenceLength, self.mixerHiddenSize, self.mixerHiddenSize))
+            self.encoder = nn.Sequential(*mixerBlocks)
+        
+        if encoderType == "transformer":
+            encoder_layer = nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=2048, dropout=0)
+            self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+
         self.relu = nn.ReLU()
         self.reductionLayer = nn.Linear(embeddingSize, latentSize)
 

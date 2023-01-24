@@ -12,14 +12,14 @@ savePath = "outputs"
 sentenceLength = 50
 
 vocab = ToyVocab(numWords=10)
-trainDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=2000)
+trainDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=200)
 
 
 def classicAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
 
     model = AutoEncoderMixerToSeq(
-        vocab, sentenceLength=sentenceLength, embeddingSize=16, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
+        vocab, sentenceLength=sentenceLength, embeddingSize=64, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
     )
 
     trainer = AutoencoderTrainer(
@@ -50,7 +50,10 @@ def classicAutoencoder(args):
     simpleVizualization(trainer, DataLoader(BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=2000), batch_size), device=device)
 
     vizDataset = BinaryDuplicateToyDataset(mode="pairs", vocab=vocab, numberSamples=2000)
-    PlotProximity(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)()
+    distance90Percent = PlotProximity(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)()
+
+    vizDataset.setMode("sampling")
+    NeihgborInDistance(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)(distance90Percent)
 
 
 
@@ -58,7 +61,7 @@ def adversarialAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
 
     model = AutoEncoderMixerToSeq(
-        vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
+        vocab, sentenceLength=sentenceLength, embeddingSize=64, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
     )
 
     trainer = AdversarialAutoencoderTrainer(
@@ -91,21 +94,21 @@ def adversarialAutoencoder(args):
     vizDataset = BinaryDuplicateToyDataset(mode="pairs", vocab=vocab, numberSamples=2000)
     distance90Percent = PlotProximity(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)()
 
-    NeihgborInDistance(trainer, DataLoader(trainDataset, batch_size), showFig=True, device=device)(distance90Percent)
-
+    vizDataset.setMode("sampling")
+    NeihgborInDistance(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)(distance90Percent)
 
 # run script
 if __name__ == "__main__":
     args = parse_args()
 
     if not args.training:
-        args.training = "aae"
+        args.training = "ae"
     if not args.model_param:
-        args.model_param = "outputs/2023-01-23-14-07/outputs/2023-01-23-14-07/checkpoints/AutoEncoderMixerToSeq-cp-2023-01-23-15-40"
+        args.model_param = ""
     if not args.num_epoch:
         args.num_epoch = 3000
     if not args.lr:
-        args.lr = 0.001
+        args.lr = 0.005
     if args.use_gpu is None:
         args.use_gpu = False
     if args.use_noise is None:

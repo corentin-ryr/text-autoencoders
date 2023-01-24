@@ -70,6 +70,7 @@ class BinaryDuplicateToyDataset(Dataset):
 
         self.nonMatchToMatchRatio = nonMatchToMatchRatio
 
+    def setMode(self, mode): self.mode = mode
 
     def __getitem__(self, index):
         if self.mode == "sampling": return self.samples[index], torch.tensor(0)
