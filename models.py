@@ -50,17 +50,17 @@ class AutoEncoderMixerToSeq(nn.Module):
         z = self.reductionLayer(z)
         return torch.mean(z, dim=1)
 
-    def decode(self, z, target=None):
+    def decode(self, z):
         hn = self.z2hn(z).unsqueeze(0)
         cn = self.z2hn(z).unsqueeze(0)
 
         inp = z.unsqueeze(1).repeat(1, self.sentenceLength, 1)
 
-        predictions, _ = self.decoder(inp, (hn, cn))
+        predictions, temp = self.decoder(inp, (hn, cn))
         logits = self.proj(predictions.squeeze(dim=1))
         return logits
 
-    def forward(self, source, target):
+    def forward(self, source):
         """Feed x into the autoencoder
 
         Args:
@@ -68,7 +68,7 @@ class AutoEncoderMixerToSeq(nn.Module):
             target (list[list[int]], optional): Target of the autoencoder. Only set for teacher forcing. Defaults to None.
         """
         z = self.encode(source)
-        symbols = self.decode(z, target)
+        symbols = self.decode(z)
 
         return symbols
 

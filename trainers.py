@@ -7,7 +7,6 @@ from utils import noisy, compute_term_frequency, Tokenizer
 
 from mixers.trainers.abstractTrainers import Trainer
 from torch import nn, optim
-from torch.utils.data import Dataset
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import OneCycleLR
@@ -15,24 +14,7 @@ from utils import priorSampling
 
 
 class AutoencoderTrainer(Trainer):
-    def __init__(
-        self,
-        model: nn.Module,
-        device,
-        ignore_padding: bool,
-        vocab: Tokenizer = None,
-        traindataset: Dataset = None,
-        testdataset: Dataset = None,
-        evaldataset: Dataset = None,
-        batch_size: int = 256,
-        epochs=150,
-        collate_fn=None,
-        lr=0.001,
-        shuffle: bool = True,
-        denoising: bool = False,
-        displayLoss: bool = True,
-        runName: str = None,
-    ) -> None:
+    def __init__(self, vocab: Tokenizer = None, epochs=150, lr=0.001, denoising: bool = False, runName: str = None, **kwargs) -> None:
         """Class to train a autoencoder model. It works for recurrent and non recurrent models. It can apply the variational and adversarial training procedures.
 
         Args:
@@ -50,16 +32,14 @@ class AutoencoderTrainer(Trainer):
             shuffle (bool, optional): Wether to shuffle the dataset at each epoch. Defaults to True.
             denoising (bool, optional): Wether to apply noise to the input. Defaults to False.
         """
-        super().__init__(model, device, traindataset, testdataset, evaldataset, batch_size, collate_fn, shuffle=shuffle, num_workers=0)
+        super().__init__(**kwargs, num_workers=0)
 
         self.lr = lr
         self.vocab = vocab
         self.epochs = epochs
-        self.ignore_padding = ignore_padding
         self.denoising = denoising
-        self.display_loss = displayLoss
-        self.metrics = {}
 
+        self.metrics = {}
         runName = runName if runName else datetime.today().strftime("%Y-%m-%d-%H-%M")
         self.runDirectory = os.path.join("outputs", runName)
         self.writer = SummaryWriter(log_dir=self.runDirectory)
@@ -72,29 +52,26 @@ class AutoencoderTrainer(Trainer):
         super().train()
 
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
-        criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss(weight=weights)
+        criterion = nn.CrossEntropyLoss(weight=weights)
 
         for epoch in range(self.epochs):
             total_loss = 0
             self.model.train()
 
-            for idx, data in enumerate(tqdm(self.trainloader, desc="Epoch {}".format(epoch))):
+            for _, data in enumerate(tqdm(self.trainloader, desc="Epoch {}".format(epoch))):
                 source, _ = data
                 source, target = self.add_noise(source)
 
-                self.optimizer.zero_grad()
-
-                predictions = self.model(source, target)
-
+                predictions = self.model(source)
                 loss = criterion(torch.flatten(predictions, end_dim=1), torch.flatten(target))
+                
+                self.optimizer.zero_grad()
                 loss.backward()
-
                 self.optimizer.step()
 
                 total_loss += loss.item() * len(source)
 
             print(datetime.now().strftime("%H:%M:%S"), "Epoch", epoch, "loss:", total_loss / len(self.trainloader.dataset))
-
             self.metrics["Loss reconstruction"] = total_loss / len(self.trainloader.dataset)
             self.metrics["Learning rate"] = self.scheduler.get_last_lr()[0]
             self._handle_metrics(epoch)
@@ -105,7 +82,6 @@ class AutoencoderTrainer(Trainer):
                 self.validate(validateOnTrain=True, epoch=epoch)
 
     def validate(self, validateOnTrain: bool = False, epoch: int = None):
-
         correct_sentences, incorrect_sentences = 0, 0
         correct_symbols, all_symbols_target = 0, 0
 
@@ -113,28 +89,22 @@ class AutoencoderTrainer(Trainer):
         for idx, data in enumerate(tqdm(self.trainloader if validateOnTrain else self.testloader, desc="Validation")):
             source, _ = data
             source = source.to(self.device)
-            target = torch.clone(source).detach()
 
             z = self.encode(source)
             predicted_sentences = self.decode(z)
 
-            symbolsBatch = torch.count_nonzero(target).item() if self.ignore_padding else target.numel()
-            nbNonZeros = (
-                torch.count_nonzero(torch.masked_select(torch.abs(predicted_sentences - target), target != 0)).item()
-                if self.ignore_padding
-                else torch.count_nonzero(predicted_sentences - target).item()
-            )
+            symbolsBatch = source.numel()
+            nbNonZeros = torch.count_nonzero(predicted_sentences - source).item()
             all_symbols_target += symbolsBatch
             correct_symbols += symbolsBatch - nbNonZeros
 
             for idx, sentence in enumerate(predicted_sentences):
-                if torch.equal(sentence, target[idx]):
+                if torch.equal(sentence, source[idx]):
                     correct_sentences += 1
                 else:
                     incorrect_sentences += 1
 
         print(f"Number of symbols: {all_symbols_target} | Number of sentences: {len(self.trainloader.dataset)} \n")
-
         print(f"Correctly predicted words    : {correct_symbols} ({(correct_symbols / all_symbols_target)*100:.2f}% of all symbols)")
         print(
             f"Correctly predicted sentences  : {correct_sentences} ({(correct_sentences / len(self.trainloader.dataset))*100:.2f}% of all sentences)"
@@ -192,40 +162,8 @@ class AutoencoderTrainer(Trainer):
 
 
 class AdversarialAutoencoderTrainer(AutoencoderTrainer):
-    def __init__(
-        self,
-        model: nn.Module,
-        device,
-        vocab,
-        ignore_padding: bool,
-        traindataset: Dataset = None,
-        testdataset: Dataset = None,
-        evaldataset: Dataset = None,
-        batch_size: int = 256,
-        epochs=150,
-        collate_fn=None,
-        lr=0.001,
-        shuffle: bool = True,
-        denoising: bool = False,
-        displayLoss: bool = False,
-    ) -> None:
-
-        super().__init__(
-            model=model,
-            device=device,
-            vocab=vocab,
-            ignore_padding=ignore_padding,
-            traindataset=traindataset,
-            testdataset=testdataset,
-            evaldataset=evaldataset,
-            batch_size=batch_size,
-            epochs=epochs,
-            collate_fn=collate_fn,
-            lr=lr,
-            shuffle=shuffle,
-            denoising=denoising,
-            displayLoss=displayLoss,
-        )
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
 
         self.z_dim = self.model.latentSize
         self.D = nn.Sequential(nn.Linear(self.z_dim, 8), nn.ReLU(), nn.Linear(8, 1), nn.Sigmoid()).to(device)
@@ -236,7 +174,7 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
     def train(self):
 
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
-        criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(weight=weights)
 
         for epoch in range(self.epochs):
             total_loss_ae = 0
@@ -248,7 +186,7 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
                 source, target = self.add_noise(source)
 
                 z = self.model.encode(source)
-                predictions = self.model.decode(z, target)
+                predictions = self.model.decode(z)
 
                 zn = priorSampling(z.shape, prior="uniform")
                 zeros = torch.zeros(len(z), 1, device=self.device)
@@ -310,7 +248,7 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
 class VariationalAutoEncoderTrainer(AutoencoderTrainer):
     def train(self):
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
-        criterion = nn.CrossEntropyLoss(weight=weights, ignore_index=0) if self.ignore_padding else nn.CrossEntropyLoss(weight=weights)
+        criterion = nn.CrossEntropyLoss(weight=weights)
 
         for epoch in range(self.epochs):
             total_loss_rec = 0

@@ -1,7 +1,9 @@
+import random
 import torch
-from torch.utils.data import DataLoader, Dataset
-
+from torch.utils.data import Dataset, DataLoader
 from utils import ToyVocab
+
+from datasets import load_dataset
 
 class BinaryToyDataset(Dataset):
     def __init__(self, numClasses=5, sampleLength=50, samplePerClass=100, vocab=None) -> None:
@@ -22,21 +24,12 @@ class BinaryToyDataset(Dataset):
         self.samples = torch.concat(self.samples) + vocab.nspecial
         self.labels = torch.concat(self.labels)
 
-
     def __getitem__(self, index):
         return self.samples[index], self.labels[index]
 
     def __len__(self):
         return len(self.labels)
 
-
-if __name__ == "__main__":
-    dataset = BinaryToyDataset()
-
-    dataloader = DataLoader(dataset, batch_size=5, shuffle=True)
-
-    for data in dataloader:
-        print(data)
 
 class BinaryDuplicateToyDataset(Dataset):
     def __init__(self, sampleLength=50, numberSamples=400, proportionDuplicate=0.15, mode:str = "sampling", nonMatchToMatchRatio=2, vocab=None) -> None:
@@ -67,7 +60,6 @@ class BinaryDuplicateToyDataset(Dataset):
                 self.exactMatch.append( (len(self.samples) - 1, len(self.samples) - 2) )
         
         self.samples = torch.stack(self.samples) + vocab.nspecial
-
         self.nonMatchToMatchRatio = nonMatchToMatchRatio
 
     def setMode(self, mode): self.mode = mode
@@ -96,3 +88,46 @@ class BinaryDuplicateToyDataset(Dataset):
     def __len__(self):
         if self.mode == "sampling": return len(self.samples)
         if self.mode == "pairs": return int(len(self.exactMatch) * self.nonMatchToMatchRatio)
+
+class SickDataset(Dataset):
+    def __init__(self, set="train", mode="sampling") -> None:
+        super().__init__()
+        self.set = set
+        self.mode = mode
+
+        sickDataset = load_dataset("sick")
+        self.train = sickDataset["train"]
+        self.test = sickDataset["test"]
+    
+    def __getitem__(self, index):
+        if self.set == "train":
+            sample = self.train[index]
+        if self.set == "test":
+            sample = self.test[index]
+
+        if self.mode == "sampling":
+            return sample["sentence_A"] if random.random() < 0.5 else sample["sentence_B"]
+        if self.mode == "pairs":
+            return sample["sentence_A"], sample["sentence_B"], torch.tensor(0 if sample["relatedness_score"] < 3.5 else 1)
+        
+        raise ValueError(f"{self.set} is not a correct value for mode.")
+
+    def __len__(self):
+        if self.set == "train": return self.train.num_rows
+        if self.set == "test": return self.test.num_rows
+
+        raise ValueError(f"{self.set} is not a correct value for set.")
+
+    def setMode(self, mode):
+        self.mode = mode
+
+if __name__ == "__main__":
+    sickDataset = SickDataset()
+
+    print(len(sickDataset))
+    print(sickDataset[0])
+
+    sickDataset.setMode("pairs")
+    dataloader = DataLoader(sickDataset, batch_size=3, shuffle=True)
+
+    print(next(iter(dataloader)))
