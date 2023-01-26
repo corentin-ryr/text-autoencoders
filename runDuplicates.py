@@ -4,23 +4,27 @@ from torch.utils.data import DataLoader
 from dataset import BinaryDuplicateToyDataset
 from models import AutoEncoderMixerToSeq
 from trainers import AdversarialAutoencoderTrainer, AutoencoderTrainer
-from utils import (NeihgborInDistance, PlotProximity, ToyVocab, get_device,
-                   parse_args, simpleVizualization)
+from utils import NeihgborInDistance, PlotProximity, ToyVocab, get_device, parse_args, simpleVizualization
 
 batch_size = 128
 savePath = "outputs"
 sentenceLength = 50
 
 vocab = ToyVocab(numWords=10)
-trainDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=200)
+trainDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=2000)
+
+
+
+# model = AutoEncoderMixerToSeq(
+#     vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1, encoderType="mixer"
+# )
+model = AutoEncoderMixerToSeq(
+    vocab, sentenceLength=sentenceLength, embeddingSize=16, mixerHiddenSize=2048, decoderHiddenSize=256, latentSize=2, num_layers=1, encoderType="transformer"
+)
 
 
 def classicAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
-
-    model = AutoEncoderMixerToSeq(
-        vocab, sentenceLength=sentenceLength, embeddingSize=64, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
-    )
 
     trainer = AutoencoderTrainer(
         model=model,
@@ -56,13 +60,8 @@ def classicAutoencoder(args):
     NeihgborInDistance(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)(distance90Percent)
 
 
-
 def adversarialAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
-
-    model = AutoEncoderMixerToSeq(
-        vocab, sentenceLength=sentenceLength, embeddingSize=64, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
-    )
 
     trainer = AdversarialAutoencoderTrainer(
         model=model,
@@ -97,16 +96,17 @@ def adversarialAutoencoder(args):
     vizDataset.setMode("sampling")
     NeihgborInDistance(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)(distance90Percent)
 
+
 # run script
 if __name__ == "__main__":
     args = parse_args()
 
     if not args.training:
-        args.training = "ae"
+        args.training = "aae"
     if not args.model_param:
         args.model_param = ""
     if not args.num_epoch:
-        args.num_epoch = 3000
+        args.num_epoch = 5000
     if not args.lr:
         args.lr = 0.005
     if args.use_gpu is None:

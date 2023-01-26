@@ -6,7 +6,7 @@ from mixers.models.MLPMixer.mlpmixer import MixerBlock
 
 
 class AutoEncoderMixerToSeq(nn.Module):
-    def __init__(self, vocab, sentenceLength=100, embeddingSize=50, mixerHiddenSize=256, decoderHiddenSize=512, num_layers=3, latentSize=32) -> None:
+    def __init__(self, vocab, sentenceLength=100, embeddingSize=50, mixerHiddenSize=256, decoderHiddenSize=512, num_layers=3, latentSize=32, encoderType="mixer") -> None:
         super().__init__()
 
         self.mixerHiddenSize = mixerHiddenSize
@@ -18,12 +18,6 @@ class AutoEncoderMixerToSeq(nn.Module):
         self.embedding = nn.Embedding(vocab.vocab_length, embedding_dim=embeddingSize)
         self.pos_encoder = PositionalEncoding(embeddingSize, max_len=sentenceLength)
 
-        mixerBlocks = []
-        for _ in range(num_layers):
-            mixerBlocks.append(MixerBlock(embeddingSize, sentenceLength, self.mixerHiddenSize, self.mixerHiddenSize))
-        self.encoder = nn.Sequential(*mixerBlocks)
-
-        encoderType = "transformer"
         if encoderType == "mixer":
             mixerBlocks = []
             for _ in range(num_layers):
@@ -31,7 +25,7 @@ class AutoEncoderMixerToSeq(nn.Module):
             self.encoder = nn.Sequential(*mixerBlocks)
         
         if encoderType == "transformer":
-            encoder_layer = nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=2048, dropout=0)
+            encoder_layer = nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=self.mixerHiddenSize, dropout=0)
             self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
 
         self.relu = nn.ReLU()

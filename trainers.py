@@ -228,7 +228,7 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
         )
 
         self.z_dim = self.model.latentSize
-        self.D = nn.Sequential(nn.Linear(self.z_dim, 64), nn.ReLU(), nn.Linear(64, 1), nn.Sigmoid()).to(device)
+        self.D = nn.Sequential(nn.Linear(self.z_dim, 8), nn.ReLU(), nn.Linear(8, 1), nn.Sigmoid()).to(device)
 
         self.optD = optim.Adam(self.D.parameters(), lr=self.lr)
         self.schedulerD = OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.epochs)
