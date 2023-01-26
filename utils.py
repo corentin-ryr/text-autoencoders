@@ -7,7 +7,9 @@ from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 from scipy import stats
+from scipy.stats import spearmanr
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from torch.optim.lr_scheduler import ReduceLROnPlateau, _LRScheduler
@@ -273,10 +275,9 @@ def tsneOn2Dim(trainer, dataloader, device="cpu"):
     trainer.add_image_tensorboard("tsne", fig)
 
 class Visualizer(ABC):
-    def __init__(self, trainer, dataloader, showFig: bool, device: str = "cpu") -> None:
+    def __init__(self, trainer, dataloader, device: str = "cpu") -> None:
         self.trainer = trainer
         self.dataloader = dataloader
-        self.showFig = showFig
         self.savePath = "outputs"
         self.device = device
 
@@ -287,9 +288,7 @@ class Visualizer(ABC):
         pass
 
     def _show_save_fig(self, tag, fig:plt.Figure):
-        plt.savefig(os.path.join(self.savePath, tag + ".png"))
-        if self.showFig:
-            plt.show()
+        self.trainer.add_image_tensorboard(tag, fig)
 
 class NeihgborInDistance(Visualizer):
     def __call__(self, distance:float) -> None:
@@ -382,25 +381,49 @@ class PlotProximity(Visualizer):
 
         self.trainer.add_image_tensorboard("precision-recall", fig)
 
-        # Distance for 90% of the duplicates
-        sorted_distances = np.sort(distances[labels == 1])
-        linear = np.linspace(0, 1, len(sorted_distances))
+        percentages = [0.6, 0.75, 0.8, 0.9]
+        distancePercentages = []
+        fig, axes = plt.subplots(1, len(percentages))
+        for idx, percentage in enumerate(percentages):
+            # Distance for {percentage} of the duplicates
+            sorted_distances = np.sort(distances[labels == 1])
+            linear = np.linspace(0, 1, len(sorted_distances))
 
-        firstIndiceAbove90 = np.argmax(linear >= 0.9)
-        distance90Percent = sorted_distances[firstIndiceAbove90]
-        print(f"90% distances under {distance90Percent}")
+            firstIndiceAbove90 = np.argmax(linear >= percentage)
+            distance90Percent = sorted_distances[firstIndiceAbove90]
+            print(f"{percentage*100:.2f}% distances under {distance90Percent}")
+            distancePercentages.append(distance90Percent)
 
-        fig, ax = plt.subplots()
-        ax.plot(sorted_distances, linear)
-        ax.vlines([sorted_distances[firstIndiceAbove90]], 0, 1, colors=["red"], label="90% threshold")
-        ax.set_title("Percentage of duplicate pair under distance")
-        ax.set_xlabel("Distance")
-        ax.set_ylabel("Number of pairs")
-        ax.legend()
+            
+            axes[idx].plot(sorted_distances, linear)
+            axes[idx].vlines([sorted_distances[firstIndiceAbove90]], 0, 1, colors=["red"], label="90% threshold")
+            axes[idx].set_title("Percentage of duplicate pair under distance")
+            axes[idx].set_xlabel("Distance")
+            axes[idx].set_ylabel("Number of pairs")
+            axes[idx].legend()
 
         self.trainer.add_image_tensorboard("dup-under-distance", fig)
 
-        return distance90Percent
+        return distancePercentages
+
+class SRCC(Visualizer):
+    def __call__(self) -> None:
+
+        similarities = []
+        truth = []
+        for sample1, sample2, label in tqdm(self.dataloader, desc="Computing SRCC"):
+
+            cosineSim = F.cosine_similarity(self.trainer.encode(sample1.to(self.device)).to("cpu"), self.trainer.encode(sample2.to(self.device)).to("cpu")).squeeze()
+            similarities.append(cosineSim)
+            truth.append(label)
+
+        similarities = torch.concat(similarities)
+        truth = torch.concat(truth)
+     
+        srcc = spearmanr(similarities, truth)
+        print(f"Spearmen Ranking correlation coefficient {srcc.correlation * 100:.2f}")
+        self.trainer.writer.add_text("SRCC", str(srcc.correlation * 100))
+
 
 # Arg parser ===============================================================================
 

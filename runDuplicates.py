@@ -5,36 +5,49 @@ from dataset import BinaryDuplicateToyDataset
 from models import AutoEncoderMixerToSeq
 from trainers import AdversarialAutoencoderTrainer, AutoencoderTrainer
 from utils import (NeihgborInDistance, PlotProximity, ToyVocab, get_device,
-                   parse_args, simpleVizualization)
+                   parse_args, simpleVizualization, SRCC)
 
 batch_size = 128
 savePath = "outputs"
 sentenceLength = 50
 
 vocab = ToyVocab(numWords=10)
-trainDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=200)
+trainDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=2000, nonMatchToMatchRatio=2)
 
 
-def classicAutoencoder(args):
+def trainingAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
 
     model = AutoEncoderMixerToSeq(
         vocab, sentenceLength=sentenceLength, embeddingSize=64, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
     )
 
-    trainer = AutoencoderTrainer(
-        model=model,
-        device=device,
-        ignore_padding=False,
-        traindataset=trainDataset,
-        testdataset=trainDataset,
-        batch_size=batch_size,
-        epochs=args.num_epoch,
-        lr=args.lr,
-        denoising=args.use_noise,
-        displayLoss=True,
-        vocab=vocab,
-    )
+    if args.training == "ae":
+        trainer = AutoencoderTrainer(
+            model=model,
+            device=device,
+            ignore_padding=False,
+            traindataset=trainDataset,
+            testdataset=trainDataset,
+            batch_size=batch_size,
+            epochs=args.num_epoch,
+            lr=args.lr,
+            denoising=args.use_noise,
+            vocab=vocab,
+        )
+    if args.training == "aae":
+        trainer = AdversarialAutoencoderTrainer(
+            model=model,
+            device=device,
+            ignore_padding=False,
+            traindataset=trainDataset,
+            testdataset=trainDataset,
+            batch_size=batch_size,
+            epochs=args.num_epoch,
+            lr=args.lr,
+            denoising=args.use_noise,
+            vocab=vocab,
+        )
 
     if args.model_param:
         trainer.load_model(args.model_param)
@@ -42,60 +55,24 @@ def classicAutoencoder(args):
     print(args)
     trainer.summarize_model()
 
-    trainer.train()
-    trainer.save_model()
+    # trainer.train()
+    # trainer.save_model()
 
     trainer.validate()
 
-    simpleVizualization(trainer, DataLoader(BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=2000), batch_size), device=device)
+    simpleVizualization(trainer, DataLoader(trainDataset, batch_size), device=device)
 
-    vizDataset = BinaryDuplicateToyDataset(mode="pairs", vocab=vocab, numberSamples=2000)
-    distance90Percent = PlotProximity(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)()
+    # vizDataset = BinaryDuplicateToyDataset(mode="pairs", vocab=vocab, numberSamples=2000)
+    trainDataset.setMode("pairs")
+    distancePercentages = PlotProximity(trainer, DataLoader(trainDataset, batch_size), device=device)()
 
-    vizDataset.setMode("sampling")
-    NeihgborInDistance(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)(distance90Percent)
+    trainDataset.setMode("sampling")
+    for distance in distancePercentages:
+        NeihgborInDistance(trainer, DataLoader(trainDataset, batch_size), device=device)(distance)
 
+    trainDataset.setMode("pairs")
+    SRCC(trainer, DataLoader(trainDataset, batch_size))()
 
-
-def adversarialAutoencoder(args):
-    device = get_device(useGPU=args.use_gpu)
-
-    model = AutoEncoderMixerToSeq(
-        vocab, sentenceLength=sentenceLength, embeddingSize=64, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
-    )
-
-    trainer = AdversarialAutoencoderTrainer(
-        model=model,
-        device=device,
-        ignore_padding=False,
-        traindataset=trainDataset,
-        testdataset=trainDataset,
-        batch_size=batch_size,
-        epochs=args.num_epoch,
-        lr=args.lr,
-        denoising=args.use_noise,
-        displayLoss=True,
-        vocab=vocab,
-    )
-
-    if args.model_param:
-        trainer.load_model(args.model_param)
-
-    print(args)
-    trainer.summarize_model()
-
-    trainer.train()
-    trainer.save_model()
-
-    trainer.validate()
-
-    simpleVizualization(trainer, DataLoader(BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=200), batch_size), device=device)
-
-    vizDataset = BinaryDuplicateToyDataset(mode="pairs", vocab=vocab, numberSamples=2000)
-    distance90Percent = PlotProximity(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)()
-
-    vizDataset.setMode("sampling")
-    NeihgborInDistance(trainer, DataLoader(vizDataset, batch_size), showFig=True, device=device)(distance90Percent)
 
 # run script
 if __name__ == "__main__":
@@ -114,11 +91,4 @@ if __name__ == "__main__":
     if args.use_noise is None:
         args.use_noise = True
 
-    if args.training == "ae":
-        classicAutoencoder(args)
-
-    elif args.training == "aae":
-        adversarialAutoencoder(args)
-
-    else:
-        print("Please select from the three training procedures: ae, vae and aae")
+    trainingAutoencoder(args)
