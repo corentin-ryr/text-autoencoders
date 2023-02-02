@@ -3,6 +3,7 @@ import distutils
 import os
 from abc import ABC
 from typing import Tuple
+from matplotlib.lines import Line2D
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -313,8 +314,10 @@ class NeihgborInDistance(Visualizer):
         print(f"Average number of neighbors closer than {distance:.2f}: {average}")
         print(f"Or {(average / len(allEncodings) * 100):.2f}% of the samples")
 
+        return average / len(allEncodings)
+
 class PlotProximity(Visualizer):
-    def __call__(self) -> None:
+    def __call__(self, percentages) -> None:
         distances = []
         labels = []
         yValues = []
@@ -368,6 +371,11 @@ class PlotProximity(Visualizer):
 
         (precision, recall, thresholds) = prc.compute()
 
+        #F1 score
+        f1 = torch.max(2 * precision * recall / (precision + recall))
+        print(f"F1 score {f1}")
+        self.trainer.writer.add_text("f1", str(f1))
+
         auc = AUC()
         aucrp = auc(recall, precision).item()
         print(f"Area under precision recall curve: {aucrp:.3f}")
@@ -381,7 +389,6 @@ class PlotProximity(Visualizer):
 
         self.trainer.add_image_tensorboard("precision-recall", fig)
 
-        percentages = [0.6, 0.75, 0.8, 0.9]
         distancePercentages = []
         fig, axes = plt.subplots(1, len(percentages))
         for idx, percentage in enumerate(percentages):
@@ -413,16 +420,17 @@ class SRCC(Visualizer):
         truth = []
         for sample1, sample2, label in tqdm(self.dataloader, desc="Computing SRCC"):
 
+            linfSim = torch.exp(-torch.max(torch.abs(self.trainer.encode(sample1.to(self.device)).to("cpu") - self.trainer.encode(sample2.to(self.device)).to("cpu")), dim=1)[0])
             cosineSim = F.cosine_similarity(self.trainer.encode(sample1.to(self.device)).to("cpu"), self.trainer.encode(sample2.to(self.device)).to("cpu")).squeeze()
-            similarities.append(cosineSim)
+            similarities.append(linfSim)
             truth.append(label)
 
         similarities = torch.concat(similarities)
         truth = torch.concat(truth)
      
         srcc = spearmanr(similarities, truth)
-        print(f"Spearmen Ranking correlation coefficient {srcc.correlation * 100:.2f}")
         self.trainer.writer.add_text("SRCC", str(srcc.correlation * 100))
+        print(f"Spearmen Ranking correlation coefficient {srcc.correlation * 100:.2f}")
 
 
 # Arg parser ===============================================================================
@@ -438,6 +446,7 @@ def parse_args():
     parser.add_argument("--use-gpu", type=lambda x: bool(distutils.util.strtobool(x)))
     parser.add_argument("--use-noise", type=lambda x: bool(distutils.util.strtobool(x)))
     parser.add_argument("--lr", type=float)
+    parser.add_argument("--run-name", type=str)
 
     # parse args
     args = parser.parse_args()
@@ -483,3 +492,55 @@ def priorSampling(sampleShape:Tuple[int], prior:str="gaussian"):
         return torch.randn(sampleShape) * 0.1 + means
     if prior == "uniform":
         return torch.rand(sampleShape) - 0.5
+
+
+
+
+# Grad viz ===========================================================================================
+
+class InteractiveGradFlow():
+
+    def __init__(self) -> None:
+        """
+        num_axes is the number of variables that should be plotted.
+        """
+        self.i = []
+        self.val = []
+        plt.ion()
+        plt.subplots_adjust(bottom=0.3, top=1)
+        self.axes = plt.gca()
+        self.axes.set_title("Gradient flow")
+
+    def update_plot(self, named_parameters):
+
+        ave_grads = []
+        max_grads = []
+        layers = []
+        for n, p in named_parameters:
+            if (p.requires_grad) and ("bias" not in n) and p.grad is not None:
+                layers.append(n)
+                ave_grads.append(p.grad.abs().mean())
+                max_grads.append(p.grad.abs().max())
+
+        self.axes.clear()
+
+        self.axes.bar(np.arange(len(max_grads)), max_grads,
+                      alpha=0.1, lw=1, color="c")
+        self.axes.bar(np.arange(len(max_grads)), ave_grads,
+                      alpha=0.1, lw=1, color="b")
+        self.axes.hlines(0, 0, len(ave_grads)+1, lw=2, color="k")
+        self.axes.set_xticks(range(0, len(ave_grads), 1),
+                             layers, rotation="vertical")
+        self.axes.set_xlim(left=0, right=len(ave_grads))
+        # zoom in on the lower gradient regions
+        self.axes.set_ylim(bottom=-0.001, top=0.02)
+        self.axes.set_xlabel("Layers")
+        self.axes.set_ylabel("average gradient")
+        self.axes.set_title("Gradient flow")
+        self.axes.grid(True)
+        self.axes.legend([Line2D([0], [0], color="c", lw=4),
+                          Line2D([0], [0], color="b", lw=4),
+                          Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
+
+        plt.draw()
+        plt.pause(1e-20)

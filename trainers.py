@@ -3,7 +3,7 @@ import os
 
 import torch
 import torch.nn.functional as F
-from utils import noisy, compute_term_frequency, Tokenizer
+from utils import InteractiveGradFlow, noisy, compute_term_frequency, Tokenizer
 
 from mixers.trainers.abstractTrainers import Trainer
 from torch import nn, optim
@@ -12,6 +12,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import OneCycleLR
 from utils import priorSampling
 
+from rich.pretty import Pretty
+from rich.panel import Panel
 
 class AutoencoderTrainer(Trainer):
     def __init__(self, vocab: Tokenizer = None, epochs=150, lr=0.001, denoising: bool = False, runName: str = None, **kwargs) -> None:
@@ -125,6 +127,18 @@ class AutoencoderTrainer(Trainer):
         _, predicted_tensor = predictions.topk(1)
         return predicted_tensor.squeeze()
 
+    def summarize_model(self):
+        total_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        prettyModel = Pretty(self.model)
+        self.console.print(Panel(prettyModel, title=f"[green]Device {self.device} | Number of parameters: {total_params}", border_style="green"))
+
+        self.writer.add_text("Encoder type", self.model.encoderType)
+        paramEncoder = [self.model.embedding.parameters(), self.model.pos_encoder.parameters(), self.model.encoder.parameters(), self.model.batchNorm1.parameters(), self.model.reductionLayer.parameters(), self.model.batchNorm2.parameters()]
+        paramEncoder = sum([sum(p.numel() for p in params if p.requires_grad) for params in paramEncoder])
+        self.writer.add_text("Total parameters encoder", str(paramEncoder))
+        self.console.print(f"Parameters of the encoder: {paramEncoder}")
+    
+
     def save_model(self, object_to_save=None, savePath="checkpoints", checkpoint: bool = False):
         if not object_to_save:
             if checkpoint:
@@ -166,10 +180,12 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
         super().__init__(**kwargs)
 
         self.z_dim = self.model.latentSize
-        self.D = nn.Sequential(nn.Linear(self.z_dim, 8), nn.ReLU(), nn.Linear(8, 1), nn.Sigmoid()).to(device)
+        self.D = nn.Sequential(nn.Linear(self.z_dim, 16), nn.ReLU(), nn.Linear(16, 1), nn.Sigmoid()).to(self.device)
 
         self.optD = optim.Adam(self.D.parameters(), lr=self.lr)
         self.schedulerD = OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.epochs)
+
+        self.gradInteractive = InteractiveGradFlow()
 
     def train(self):
 
@@ -196,6 +212,8 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
                 loss_adv = F.binary_cross_entropy(self.D(z), ones)
                 loss_rec = criterion(torch.flatten(predictions, end_dim=1), torch.flatten(target))
                 loss: torch.Tensor = loss_rec + 0.1 * loss_adv
+
+                # if epoch > 2000: self.gradInteractive.update_plot(self.model.named_parameters())
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -242,7 +260,7 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
             else:
                 object_to_save = self.model.state_dict()
 
-        super().save_model(object_to_save, os.path.join(self.runDirectory, savePath), checkpoint=checkpoint)
+        super().save_model(object_to_save, savePath, checkpoint=checkpoint)
 
 
 class VariationalAutoEncoderTrainer(AutoencoderTrainer):

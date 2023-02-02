@@ -14,22 +14,22 @@ class AutoEncoderMixerToSeq(nn.Module):
         self.sentenceLength = sentenceLength
         self.latentSize = latentSize
         self.vocab = vocab
+        self.encoderType = encoderType
 
         self.embedding = nn.Embedding(vocab.vocab_length, embedding_dim=embeddingSize)
         self.pos_encoder = PositionalEncoding(embeddingSize, max_len=sentenceLength)
 
-        if encoderType == "mixer":
-            mixerBlocks = []
-            for _ in range(num_layers):
+        mixerBlocks = []
+        for _ in range(num_layers):
+            if self.encoderType == "mixer":
                 mixerBlocks.append(MixerBlock(embeddingSize, sentenceLength, self.mixerHiddenSize, self.mixerHiddenSize))
-            self.encoder = nn.Sequential(*mixerBlocks)
-        
-        if encoderType == "transformer":
-            encoder_layer = nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=self.mixerHiddenSize, dropout=0)
-            self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+            if self.encoderType == "transformer":
+                mixerBlocks.append(nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=self.mixerHiddenSize, dropout=0))
+        self.encoder = nn.Sequential(*mixerBlocks)
 
-        self.relu = nn.ReLU()
+        self.batchNorm1 = nn.BatchNorm1d(embeddingSize)
         self.reductionLayer = nn.Linear(embeddingSize, latentSize)
+        self.batchNorm2 = nn.BatchNorm1d(latentSize)
 
         self.z2cn = nn.Linear(latentSize, self.decoderHiddenSize)
         self.z2hn = nn.Linear(latentSize, self.decoderHiddenSize)
@@ -47,7 +47,9 @@ class AutoEncoderMixerToSeq(nn.Module):
         wordEmb = self.pos_encoder(wordEmb)
 
         z = self.encoder(wordEmb)
+        z = torch.transpose(self.batchNorm1(torch.transpose(torch.relu(z), 1, 2)), 1, 2)
         z = self.reductionLayer(z)
+        z = torch.transpose(self.batchNorm2(torch.transpose(torch.relu(z), 1, 2)), 1, 2)
         return torch.mean(z, dim=1)
 
     def decode(self, z):

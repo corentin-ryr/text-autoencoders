@@ -6,6 +6,7 @@ from models import AutoEncoderMixerToSeq
 from trainers import AdversarialAutoencoderTrainer, AutoencoderTrainer
 from utils import (NeihgborInDistance, PlotProximity, ToyVocab, get_device,
                    parse_args, simpleVizualization, SRCC)
+import matplotlib.pyplot as plt
 
 batch_size = 128
 savePath = "outputs"
@@ -18,9 +19,14 @@ trainDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSam
 def trainingAutoencoder(args):
     device = get_device(useGPU=args.use_gpu)
 
-    model = AutoEncoderMixerToSeq(
-        vocab, sentenceLength=sentenceLength, embeddingSize=64, mixerHiddenSize=128, decoderHiddenSize=256, latentSize=2, num_layers=1
-    )
+    if args.run_name.startswith("mixer_small"):
+        model = AutoEncoderMixerToSeq(
+            vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=16, decoderHiddenSize=256, latentSize=3, num_layers=3, encoderType="mixer"
+        )
+    if args.run_name.startswith("transformer_small"):
+        model = AutoEncoderMixerToSeq(
+            vocab, sentenceLength=sentenceLength, embeddingSize=16, mixerHiddenSize=32, decoderHiddenSize=256, latentSize=3, num_layers=3, encoderType="transformer"
+        )
 
     if args.training == "ae":
         trainer = AutoencoderTrainer(
@@ -34,6 +40,7 @@ def trainingAutoencoder(args):
             lr=args.lr,
             denoising=args.use_noise,
             vocab=vocab,
+            runName=args.run_name
         )
     if args.training == "aae":
         trainer = AdversarialAutoencoderTrainer(
@@ -47,6 +54,7 @@ def trainingAutoencoder(args):
             lr=args.lr,
             denoising=args.use_noise,
             vocab=vocab,
+            runName=args.run_name
         )
 
     if args.model_param:
@@ -55,23 +63,34 @@ def trainingAutoencoder(args):
     print(args)
     trainer.summarize_model()
 
-    # trainer.train()
-    # trainer.save_model()
+    trainer.train()
+    trainer.save_model()
 
     trainer.validate()
 
-    simpleVizualization(trainer, DataLoader(trainDataset, batch_size), device=device)
+    vizDataset = BinaryDuplicateToyDataset(mode="sampling", vocab=vocab, numberSamples=2000)
+    simpleVizualization(trainer, DataLoader(vizDataset, batch_size), device=device)
 
-    # vizDataset = BinaryDuplicateToyDataset(mode="pairs", vocab=vocab, numberSamples=2000)
-    trainDataset.setMode("pairs")
-    distancePercentages = PlotProximity(trainer, DataLoader(trainDataset, batch_size), device=device)()
+    vizDataset.setMode("pairs")
+    percentages = [0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+    distancePercentages = PlotProximity(trainer, DataLoader(vizDataset, batch_size), device=device)(percentages)
 
-    trainDataset.setMode("sampling")
+    vizDataset.setMode("sampling")
+    percentageOfSamples = []
     for distance in distancePercentages:
-        NeihgborInDistance(trainer, DataLoader(trainDataset, batch_size), device=device)(distance)
+        percentageOfSamples.append(NeihgborInDistance(trainer, DataLoader(vizDataset, batch_size), device=device)(distance))
 
-    trainDataset.setMode("pairs")
-    SRCC(trainer, DataLoader(trainDataset, batch_size))()
+    fig, ax = plt.subplots()
+    ax.plot(percentages, percentageOfSamples)
+    ax.set_title("Percentage of sample for different recall values.")
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Percentage of samples")
+    trainer.add_image_tensorboard("percentage-recall", fig)
+
+    vizDataset.setMode("pairs")
+    SRCC(trainer, DataLoader(vizDataset, batch_size))()
+
+    trainer.writer.flush()
 
 
 # run script
@@ -83,12 +102,14 @@ if __name__ == "__main__":
     if not args.model_param:
         args.model_param = ""
     if not args.num_epoch:
-        args.num_epoch = 5000
+        args.num_epoch = 3000
     if not args.lr:
-        args.lr = 0.005
+        args.lr = 0.003
     if args.use_gpu is None:
         args.use_gpu = False
     if args.use_noise is None:
         args.use_noise = True
+    if args.run_name is None:
+        args.run_name = "mixer_small_6"
 
     trainingAutoencoder(args)
