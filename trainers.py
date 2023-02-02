@@ -3,7 +3,7 @@ import os
 
 import torch
 import torch.nn.functional as F
-from utils import InteractiveGradFlow, noisy, compute_term_frequency, Tokenizer
+from utils import InteractiveGradFlow, noisy, compute_term_frequency, ToyVocab
 
 from mixers.trainers.abstractTrainers import Trainer
 from torch import nn, optim
@@ -16,7 +16,7 @@ from rich.pretty import Pretty
 from rich.panel import Panel
 
 class AutoencoderTrainer(Trainer):
-    def __init__(self, vocab: Tokenizer = None, epochs=150, lr=0.001, denoising: bool = False, runName: str = None, **kwargs) -> None:
+    def __init__(self, vocab: ToyVocab = None, epochs=150, lr=0.001, denoising: bool = False, runName: str = None, **kwargs) -> None:
         """Class to train a autoencoder model. It works for recurrent and non recurrent models. It can apply the variational and adversarial training procedures.
 
         Args:
@@ -185,8 +185,6 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
         self.optD = optim.Adam(self.D.parameters(), lr=self.lr)
         self.schedulerD = OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.epochs)
 
-        self.gradInteractive = InteractiveGradFlow()
-
     def train(self):
 
         weights = compute_term_frequency(self.trainloader, self.vocab.vocab_length).to(self.device) if self.vocab else None
@@ -212,8 +210,6 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
                 loss_adv = F.binary_cross_entropy(self.D(z), ones)
                 loss_rec = criterion(torch.flatten(predictions, end_dim=1), torch.flatten(target))
                 loss: torch.Tensor = loss_rec + 0.1 * loss_adv
-
-                # if epoch > 2000: self.gradInteractive.update_plot(self.model.named_parameters())
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -242,7 +238,7 @@ class AdversarialAutoencoderTrainer(AutoencoderTrainer):
         checkpoint = torch.load(load_path)
         if "model_state_dict" in checkpoint:
             self.model.load_state_dict(checkpoint["model_state_dict"])
-            # self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             self.D.load_state_dict(checkpoint["d_state_dict"])
             self.optD.load_state_dict(checkpoint["optd_state_dict"])
         else:

@@ -124,9 +124,6 @@ class SickDataset(Dataset):
 if __name__ == "__main__":
     sickDataset = SickDataset()
 
-    print(len(sickDataset))
-    print(sickDataset[0])
-
     sickDataset.setMode("pairs")
     dataloader = DataLoader(sickDataset, batch_size=3, shuffle=True)
 

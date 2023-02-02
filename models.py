@@ -6,7 +6,17 @@ from mixers.models.MLPMixer.mlpmixer import MixerBlock
 
 
 class AutoEncoderMixerToSeq(nn.Module):
-    def __init__(self, vocab, sentenceLength=100, embeddingSize=50, mixerHiddenSize=256, decoderHiddenSize=512, num_layers=3, latentSize=32, encoderType="mixer") -> None:
+    def __init__(
+        self,
+        vocab,
+        sentenceLength=100,
+        embeddingSize=50,
+        mixerHiddenSize=256,
+        decoderHiddenSize=512,
+        num_layers=3,
+        latentSize=32,
+        encoderType="mixer",
+    ) -> None:
         super().__init__()
 
         self.mixerHiddenSize = mixerHiddenSize
@@ -24,7 +34,11 @@ class AutoEncoderMixerToSeq(nn.Module):
             if self.encoderType == "mixer":
                 mixerBlocks.append(MixerBlock(embeddingSize, sentenceLength, self.mixerHiddenSize, self.mixerHiddenSize))
             if self.encoderType == "transformer":
-                mixerBlocks.append(nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=self.mixerHiddenSize, dropout=0))
+                mixerBlocks.append(
+                    nn.TransformerEncoderLayer(
+                        d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=self.mixerHiddenSize, dropout=0
+                    )
+                )
         self.encoder = nn.Sequential(*mixerBlocks)
 
         self.batchNorm1 = nn.BatchNorm1d(embeddingSize)
@@ -63,12 +77,6 @@ class AutoEncoderMixerToSeq(nn.Module):
         return logits
 
     def forward(self, source):
-        """Feed x into the autoencoder
-
-        Args:
-            x (list[list[int]]): Batch of token indices
-            target (list[list[int]], optional): Target of the autoencoder. Only set for teacher forcing. Defaults to None.
-        """
         z = self.encode(source)
         symbols = self.decode(z)
 
@@ -76,19 +84,11 @@ class AutoEncoderMixerToSeq(nn.Module):
 
 
 class VariationalAutoEncoderMixerToSeq(AutoEncoderMixerToSeq):
-    def __init__(self, vocab, sentenceLength=100, embeddingSize=50, mixerHiddenSize=256, decoderHiddenSize=512, num_layers=3, latentSize=32) -> None:
-        super().__init__(
-            vocab=vocab,
-            sentenceLength=sentenceLength,
-            embeddingSize=embeddingSize,
-            mixerHiddenSize=mixerHiddenSize,
-            decoderHiddenSize=decoderHiddenSize,
-            num_layers=num_layers,
-            latentSize=latentSize,
-        )
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
 
-        self.z2mu = nn.Linear(latentSize, latentSize)
-        self.z2logvar = nn.Linear(latentSize, latentSize)
+        self.z2mu = nn.Linear(self.latentSize, self.latentSize)
+        self.z2logvar = nn.Linear(self.latentSize, self.latentSize)
 
     def encode(self, x):
         wordEmb = self.embedding(x)
@@ -107,15 +107,9 @@ class VariationalAutoEncoderMixerToSeq(AutoEncoderMixerToSeq):
 
         return z, mu, logvar
 
-    def forward(self, source, target):
-        """Feed x into the autoencoder
-
-        Args:
-            x (list[list[int]]): Batch of token indices
-            target (list[list[int]], optional): Target of the autoencoder. Only set for teacher forcing. Defaults to None.
-        """
+    def forward(self, source):
         z, mu, logvar = self.encode(source)
-        symbols = self.decode(z, target)
+        symbols = self.decode(z)
 
         return symbols, mu, logvar
 
