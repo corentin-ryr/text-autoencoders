@@ -6,7 +6,7 @@ from mixers.models.MLPMixer.mlpmixer import MixerBlock
 
 
 class AutoEncoderMixerToSeq(nn.Module):
-    def __init__(self, vocab, sentenceLength=100, embeddingSize=50, mixerHiddenSize=256, decoderHiddenSize=512, num_layers=3, latentSize=32, encoderType="mixer") -> None:
+    def __init__(self, vocab, sentenceLength=100, embeddingSize=50, mixerHiddenSize=256, decoderHiddenSize=512, num_layers=3, latentSize=32, encoderType="mixer", numHead=4) -> None:
         super().__init__()
 
         self.mixerHiddenSize = mixerHiddenSize
@@ -24,7 +24,7 @@ class AutoEncoderMixerToSeq(nn.Module):
             if self.encoderType == "mixer":
                 mixerBlocks.append(MixerBlock(embeddingSize, sentenceLength, self.mixerHiddenSize, self.mixerHiddenSize))
             if self.encoderType == "transformer":
-                mixerBlocks.append(nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=4, batch_first=True, dim_feedforward=self.mixerHiddenSize, dropout=0))
+                mixerBlocks.append(nn.TransformerEncoderLayer(d_model=embeddingSize, nhead=numHead, batch_first=True, dim_feedforward=self.mixerHiddenSize, dropout=0))
         self.encoder = nn.Sequential(*mixerBlocks)
 
         self.batchNorm1 = nn.BatchNorm1d(embeddingSize)

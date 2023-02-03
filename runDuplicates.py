@@ -25,7 +25,11 @@ def trainingAutoencoder(args):
         )
     if args.run_name.startswith("transformer_small"):
         model = AutoEncoderMixerToSeq(
-            vocab, sentenceLength=sentenceLength, embeddingSize=16, mixerHiddenSize=32, decoderHiddenSize=256, latentSize=3, num_layers=3, encoderType="transformer"
+            vocab, sentenceLength=sentenceLength, embeddingSize=16, mixerHiddenSize=32, decoderHiddenSize=256, latentSize=3, num_layers=3, numHead=4, encoderType="transformer"
+        )
+    if args.run_name.startswith("transformer_medium"):
+        model = AutoEncoderMixerToSeq(
+            vocab, sentenceLength=sentenceLength, embeddingSize=24, mixerHiddenSize=64, decoderHiddenSize=256, latentSize=3, num_layers=3, numHead=6, encoderType="transformer"
         )
 
     if args.training == "ae":
@@ -110,6 +114,6 @@ if __name__ == "__main__":
     if args.use_noise is None:
         args.use_noise = True
     if args.run_name is None:
-        args.run_name = "mixer_small_6"
+        args.run_name = "transformer_medium_6"
 
     trainingAutoencoder(args)
