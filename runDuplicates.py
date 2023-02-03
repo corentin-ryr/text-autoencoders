@@ -4,8 +4,8 @@ from torch.utils.data import DataLoader
 from dataset import BinaryDuplicateToyDataset
 from models import AutoEncoderMixerToSeq
 from trainers import AdversarialAutoencoderTrainer, AutoencoderTrainer
-from utils import (NeihgborInDistance, PlotProximity, ToyVocab, get_device,
-                   parse_args, simpleVizualization, SRCC)
+from utils import ToyVocab, parse_args
+from visualization import NeihgborInDistance, PlotProximity, get_device, simpleVizualization, SRCC
 import matplotlib.pyplot as plt
 
 batch_size = 128
@@ -21,7 +21,14 @@ def trainingAutoencoder(args):
 
     if args.run_name.startswith("mixer_small"):
         model = AutoEncoderMixerToSeq(
-            vocab, sentenceLength=sentenceLength, embeddingSize=4, mixerHiddenSize=16, decoderHiddenSize=256, latentSize=3, num_layers=3, encoderType="mixer"
+            vocab,
+            sentenceLength=sentenceLength,
+            embeddingSize=4,
+            mixerHiddenSize=16,
+            decoderHiddenSize=256,
+            latentSize=3,
+            num_layers=3,
+            encoderType="mixer",
         )
     if args.run_name.startswith("transformer_small"):
         model = AutoEncoderMixerToSeq(
@@ -44,7 +51,7 @@ def trainingAutoencoder(args):
             lr=args.lr,
             denoising=args.use_noise,
             vocab=vocab,
-            runName=args.run_name
+            runName=args.run_name,
         )
     if args.training == "aae":
         trainer = AdversarialAutoencoderTrainer(
@@ -58,7 +65,7 @@ def trainingAutoencoder(args):
             lr=args.lr,
             denoising=args.use_noise,
             vocab=vocab,
-            runName=args.run_name
+            runName=args.run_name,
         )
 
     if args.model_param:
